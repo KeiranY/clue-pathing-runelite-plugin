@@ -11,7 +11,6 @@ import net.runelite.api.Client;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
-import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.PluginMessage;
@@ -35,9 +34,6 @@ public class ShortestCluePlugin extends Plugin
 {
 	@Inject
 	private Client client;
-
-	@Inject
-	private ShortestClueConfig config;
 
 	@Inject
     private ClueScrollService clueService;
@@ -111,9 +107,4 @@ public class ShortestCluePlugin extends Plugin
 		}
 	}
 
-	@Provides
-	ShortestClueConfig provideConfig(ConfigManager configManager)
-	{
-		return configManager.getConfig(ShortestClueConfig.class);
-	}
 }
