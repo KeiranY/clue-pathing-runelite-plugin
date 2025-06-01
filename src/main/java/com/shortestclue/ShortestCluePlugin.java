@@ -27,7 +27,9 @@ import net.runelite.client.plugins.cluescrolls.clues.SkillChallengeClue;
 
 @Slf4j
 @PluginDescriptor(
-	name = "Example"
+	name = "Shortest Clue",
+	description = "Integrates with Shortest Path to find and display the shortest path to your current clue scroll location.",
+	tags = {"clue", "path"}
 )
 @PluginDependency(ClueScrollPlugin.class)
 public class ShortestCluePlugin extends Plugin
