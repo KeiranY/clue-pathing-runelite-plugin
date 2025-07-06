@@ -1,0 +1,54 @@
+---
+name: "Broken Clue Step"
+description: "Report a clue step that is not working or is missing."
+title: "[Broken Clue Step] <short description>"
+labels: [bug, clue-step]
+body:
+  - type: input
+    id: wiki-link
+    attributes:
+      label: OSRS Wiki Link
+      description: "Paste the link to the OSRS Wiki page for this clue step. (e.g. https://oldschool.runescape.wiki/w/Clue_scroll_(medium)_-_Go_to_this_building_to_be_illuminated)"
+      placeholder: "https://oldschool.runescape.wiki/w/..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Location/Behavior
+      description: "Where should the clue take you? What should happen?"
+      placeholder: "Expected result"
+    validations:
+      required: true
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: "What happens instead? Describe the issue."
+      placeholder: "Actual result"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs/Console Output
+      description: 'Paste any error messages or logs here. Logs are located at %userprofile%\.runelite\logs on Windows or $HOME/.runelite/logs on Linux and macOS.'
+      placeholder: "Paste logs here."
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshot(s)
+      description: "If possible, add screenshots to help explain your problem."
+      placeholder: "Attach screenshots here"
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: "Add any other context about the problem here."
+      placeholder: "Other details"
+    validations:
+      required: false

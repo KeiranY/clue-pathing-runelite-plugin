@@ -1,0 +1,38 @@
+---
+name: "Suggestion"
+description: "Suggest a new feature or improvement for the plugin."
+title: "[Suggestion] <short description>"
+labels: [enhancement]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: "Briefly summarize your suggestion."
+      placeholder: "Add support for ..."
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Detailed Description
+      description: "Describe your suggestion in detail. What problem does it solve? How would it work?"
+      placeholder: "Describe your idea, use cases, and any relevant context."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: "Have you considered any alternative solutions, features, or other plugins?"
+      placeholder: "List any alternatives, similar plugins, or related ideas."
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: "Add any other context, mockups, or screenshots about the suggestion here."
+      placeholder: "Other details"
+    validations:
+      required: false
