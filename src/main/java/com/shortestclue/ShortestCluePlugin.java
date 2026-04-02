@@ -81,6 +81,11 @@ public class ShortestCluePlugin extends Plugin
 		if (clue instanceof LocationClueScroll)
 		{
 			newDest = ((LocationClueScroll)clue).getLocation(null);
+			// Fix for Guardian Mummy clue (Issue #36): Override wrong Rat Pits location to Pyramid Plunder
+			// The upstream ClueScrollPlugin incorrectly returns Rat Pits in Keldagrim instead of Pyramid Plunder
+			if (newDest != null && newDest.getRegionID() == 13211) { // Keldagrim region
+				newDest = new WorldPoint(3288, 2842, 0); // Pyramid Plunder, Sophanem
+			}
 		}
 		if (clue instanceof FaloTheBardClue) {
 			newDest = new WorldPoint(2689, 3550, 0); // Ripped from the plugin
