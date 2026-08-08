@@ -1,16 +1,14 @@
 package com.shortestclue;
 
-import com.google.inject.Provides;
-
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.PluginMessage;
@@ -25,7 +23,6 @@ import net.runelite.client.plugins.cluescrolls.clues.LocationClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.LocationsClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.SkillChallengeClue;
 
-@Slf4j
 @PluginDescriptor(
 	name = "Shortest Clue",
 	description = "Integrates with Shortest Path to find and display the shortest path to your current clue scroll location.",
@@ -38,12 +35,26 @@ public class ShortestCluePlugin extends Plugin
 	private Client client;
 
 	@Inject
+	private ConfigManager configManager;
+
+	@Inject
     private ClueScrollService clueService;
 
 	@Inject
 	EventBus eventBus;
-	
+
 	private WorldPoint currentDest;
+
+	/**
+	 * Clue steps that are only reachable through the Wilderness, so their path is
+	 * allowed to ignore the user's {@code avoidWilderness} setting. The clue
+	 * destination is mandatory, so there is no non-wilderness alternative.
+	 */
+	private static final Set<WorldPoint> WILDERNESS_REQUIRED_TARGETS = Set.of(
+		new WorldPoint(2288, 4702, 0), // Cryptic: Kill the King Black Dragon (#25)
+		new WorldPoint(2205, 4838, 0), // Emote: Flap at the death altar (#19)
+		new WorldPoint(2011, 4712, 1)  // Emote: Blow at Iban's temple (#34), currently only reachable via Abyss -> death altar -> portal
+	);
 
 	/**
 	 * Certain clues report a destination that differs from the walkable tile, so their
@@ -82,19 +93,28 @@ public class ShortestCluePlugin extends Plugin
 		this.currentDest = null;
 	}
 
-	@Override
-	protected void startUp() throws Exception
+	public void pathTo(WorldPoint target)
 	{
-	}
+		if (client.getLocalPlayer() == null)
+		{
+			return;
+		}
 
-	@Override
-	protected void shutDown() throws Exception
-	{
-	}
+		this.currentDest = target;
 
-	@Subscribe
-	public void onGameStateChanged(GameStateChanged gameStateChanged)
-	{
+		// Only the identified steps override avoidWilderness; every other path
+		// sends back the user's current setting so a prior override doesn't leak.
+		String avoidWildernessConfig = configManager.getConfiguration("shortestpath", "avoidWilderness");
+		boolean avoidWilderness = avoidWildernessConfig == null || Boolean.parseBoolean(avoidWildernessConfig);
+
+		Map<String, Object> data = new HashMap<>();
+		data.put("start", client.getLocalPlayer().getWorldLocation());
+		data.put("target", target);
+
+		Map<String, Object> configOverride = new HashMap<>();
+		configOverride.put("avoidWilderness", WILDERNESS_REQUIRED_TARGETS.contains(target) ? Boolean.FALSE : avoidWilderness);
+		data.put("config", configOverride);
+		eventBus.post(new PluginMessage("shortestpath", "path", data));
 	}
 
 	@Subscribe
@@ -126,21 +146,15 @@ public class ShortestCluePlugin extends Plugin
 			{
 				newDest = CHARLIE_THE_TRAMP_LOCATION;
 			}
-			}
-			
+		}
+
 		if (newDest != null && REMAPPED_DESTINATIONS.containsKey(newDest))
 		{
 			newDest = REMAPPED_DESTINATIONS.get(newDest);
 		}
 
 		if (newDest != null && !newDest.equals(this.currentDest)) {
-			this.currentDest = newDest;
-
-			WorldPoint playerWp = client.getLocalPlayer().getWorldLocation();
-			Map<String, Object> data = new HashMap<>();
-			data.put("start", playerWp);
-			data.put("target", newDest);
-			eventBus.post(new PluginMessage("shortestpath", "path", data));
+			pathTo(newDest);
 		}
 	}
 
