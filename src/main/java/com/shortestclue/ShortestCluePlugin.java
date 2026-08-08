@@ -53,7 +53,11 @@ public class ShortestCluePlugin extends Plugin
 	private static final Set<WorldPoint> WILDERNESS_REQUIRED_TARGETS = Set.of(
 		new WorldPoint(2288, 4702, 0), // Cryptic: Kill the King Black Dragon (#25)
 		new WorldPoint(2205, 4838, 0), // Emote: Flap at the death altar (#19)
-		new WorldPoint(2011, 4712, 1)  // Emote: Blow at Iban's temple (#34), currently only reachable via Abyss -> death altar -> portal
+		new WorldPoint(2011, 4712, 1), // Emote: Blow at Iban's temple (#34), currently only reachable via Abyss -> death altar -> portal
+		new WorldPoint(2271, 4680, 0), // Emote: Dance in the King Black Dragon's lair
+		new WorldPoint(3039, 4834, 0), // Anagram: Dark Mage, centre of the Abyss
+		new WorldPoint(3049, 4839, 0), // Cryptic: Dig next to the law rift in the Abyss
+		new WorldPoint(1863, 4639, 0)  // Cryptic: Thorgel, a dwarf approaching death (reachable via death altar portal)
 	);
 
 	/**
