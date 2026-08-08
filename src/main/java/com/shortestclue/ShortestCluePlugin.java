@@ -45,6 +45,10 @@ public class ShortestCluePlugin extends Plugin
 	
 	private WorldPoint currentDest;
 
+	private static final WorldPoint FALO_THE_BARD_LOCATION = new WorldPoint(2689, 3550, 0);
+	private static final WorldPoint SHERLOCK_LOCATION = new WorldPoint(2735, 3413, 0);
+	private static final WorldPoint CHARLIE_THE_TRAMP_LOCATION = new WorldPoint(3208, 3391, 0);
+
 	public ShortestCluePlugin() {
 		super();
 		this.currentDest = null;
@@ -83,17 +87,17 @@ public class ShortestCluePlugin extends Plugin
 			newDest = ((LocationClueScroll)clue).getLocation(null);
 		}
 		if (clue instanceof FaloTheBardClue) {
-			newDest = new WorldPoint(2689, 3550, 0); // Ripped from the plugin
+			newDest = FALO_THE_BARD_LOCATION;
 		}
 		if (clue instanceof SkillChallengeClue) {
-			// TODO: This is hard coded based on mejrs map but feels like it could be dynamic
 			if (((SkillChallengeClue)clue).getNpcs(null)[0] == "Sherlock")
 			{
-				newDest = new WorldPoint(2735, 3413, 0);
+				newDest = SHERLOCK_LOCATION;
 			}
 			else
 			{
-				newDest = new WorldPoint(3208, 3391, 0);
+				newDest = CHARLIE_THE_TRAMP_LOCATION;
+			}
 			}
 			
 		}
