@@ -12,7 +12,6 @@ import java.util.List;
 import net.runelite.api.Client;
 import net.runelite.api.Point;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.input.MouseListener;
 import net.runelite.client.ui.FontManager;
@@ -25,6 +24,13 @@ import net.runelite.client.ui.overlay.worldmap.WorldMapOverlay;
 class ClueMapOverlay extends Overlay implements MouseListener
 {
 	private static final int HITBOX_PAD = 2;
+
+	// World map widget ids, kept as literals (mirroring the builtin plugins)
+	// because the gameval constants only exist when the full API is on the classpath.
+	private static final int WORLDMAP = 595;
+	private static final int WORLDMAP_MAP_CONTAINER = 38993927;
+	private static final int WORLDMAP_BOTTOM_GRAPHIC0 = 38993943;
+	private static final int WORLDMAP_TOOLTIP = 38993961;
 
 	private static final int TOOLTIP_OFFSET_HEIGHT = 25;
 	private static final int TOOLTIP_OFFSET_WIDTH = 5;
@@ -46,14 +52,14 @@ class ClueMapOverlay extends Overlay implements MouseListener
 		setLayer(OverlayLayer.MANUAL);
 		setPosition(OverlayPosition.DYNAMIC);
 		setPriority(PRIORITY_HIGHEST);
-		drawAfterInterface(InterfaceID.WORLDMAP);
+		drawAfterInterface(WORLDMAP);
 	}
 
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		final Widget mapWidget = client.getWidget(InterfaceID.Worldmap.MAP_CONTAINER);
-		final Widget bottomBar = client.getWidget(InterfaceID.Worldmap.BOTTOM_GRAPHIC0);
+		final Widget mapWidget = client.getWidget(WORLDMAP_MAP_CONTAINER);
+		final Widget bottomBar = client.getWidget(WORLDMAP_BOTTOM_GRAPHIC0);
 		if (mapWidget == null || bottomBar == null)
 		{
 			return null;
@@ -90,7 +96,7 @@ class ClueMapOverlay extends Overlay implements MouseListener
 			}
 		}
 
-		final Widget rsTooltip = client.getWidget(InterfaceID.Worldmap.TOOLTIP);
+		final Widget rsTooltip = client.getWidget(WORLDMAP_TOOLTIP);
 		if (rsTooltip != null)
 		{
 			rsTooltip.setHidden(hovered != null);
@@ -112,8 +118,8 @@ class ClueMapOverlay extends Overlay implements MouseListener
 			return event;
 		}
 
-		final Widget mapWidget = client.getWidget(InterfaceID.Worldmap.MAP_CONTAINER);
-		final Widget bottomBar = client.getWidget(InterfaceID.Worldmap.BOTTOM_GRAPHIC0);
+		final Widget mapWidget = client.getWidget(WORLDMAP_MAP_CONTAINER);
+		final Widget bottomBar = client.getWidget(WORLDMAP_BOTTOM_GRAPHIC0);
 		if (mapWidget == null || bottomBar == null)
 		{
 			return event;
@@ -183,7 +189,7 @@ class ClueMapOverlay extends Overlay implements MouseListener
 	private List<Point> iconCenters(CluePickerPanel.ClueEntry entry)
 	{
 		final List<Point> points = new ArrayList<>();
-		final Widget mapWidget = client.getWidget(InterfaceID.Worldmap.MAP_CONTAINER);
+		final Widget mapWidget = client.getWidget(WORLDMAP_MAP_CONTAINER);
 		if (mapWidget == null)
 		{
 			return points;

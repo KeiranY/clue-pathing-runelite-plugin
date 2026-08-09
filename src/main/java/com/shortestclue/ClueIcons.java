@@ -7,7 +7,6 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.HashMap;
 import java.util.Map;
-import net.runelite.api.gameval.ItemID;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.cluescrolls.ClueScrollPlugin;
 import net.runelite.client.util.ImageUtil;
@@ -40,6 +39,9 @@ class ClueIcons
 			key -> makeCircle(TIER_SIZE, TIER_COLORS.getOrDefault(key, Color.GRAY), true));
 	}
 
+	// Master clue scroll, same literal the builtin clue plugin uses (ClueScrollPlugin.getClueScrollImage).
+	private static final int MASTER_CLUE_SCROLL = 19835;
+
 	/**
 	 * The plain clue scroll sprite, as shown by the builtin clue plugin when its
 	 * map icon is edge-snapped.
@@ -48,7 +50,7 @@ class ClueIcons
 	{
 		if (plainClueIcon == null)
 		{
-			plainClueIcon = itemManager.getImage(ItemID.TRAIL_CLUE_MASTER);
+			plainClueIcon = itemManager.getImage(MASTER_CLUE_SCROLL);
 		}
 		return plainClueIcon;
 	}
