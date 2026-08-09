@@ -176,4 +176,9 @@ public class ShortestCluePlugin extends Plugin
 		}
 	}
 
+	@Override
+	protected void shutDown()
+	{
+		clearPathIfOurs();
+	}
 }
