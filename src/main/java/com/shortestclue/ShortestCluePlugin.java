@@ -97,6 +97,16 @@ public class ShortestCluePlugin extends Plugin
 		this.currentDest = null;
 	}
 
+	private void clearPathIfOurs()
+	{
+		if (this.currentDest == null)
+		{
+			return;
+		}
+		this.currentDest = null;
+		eventBus.post(new PluginMessage("shortestpath", "clear", new HashMap<>()));
+	}
+
 	public void pathTo(WorldPoint target)
 	{
 		if (client.getLocalPlayer() == null)
@@ -125,7 +135,11 @@ public class ShortestCluePlugin extends Plugin
 	public void onGameTick(final GameTick event)
 	{
 		ClueScroll clue = clueService.getClue();
-		if (clue == null) return;
+		if (clue == null)
+		{
+			clearPathIfOurs();
+			return;
+		}
 
 		WorldPoint newDest = null;
 		if (clue instanceof LocationsClueScroll)
