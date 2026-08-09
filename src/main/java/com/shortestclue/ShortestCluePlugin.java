@@ -5,14 +5,19 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import com.google.inject.Provides;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameTick;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.PluginMessage;
+import net.runelite.client.game.ItemManager;
+import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDependency;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -23,6 +28,10 @@ import net.runelite.client.plugins.cluescrolls.clues.FaloTheBardClue;
 import net.runelite.client.plugins.cluescrolls.clues.LocationClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.LocationsClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.SkillChallengeClue;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.ui.overlay.worldmap.WorldMapOverlay;
+import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 
 @PluginDescriptor(
 	name = "Shortest Clue",
@@ -46,6 +55,32 @@ public class ShortestCluePlugin extends Plugin
 
 	@Inject
 	EventBus eventBus;
+
+	@Inject
+	private ShortestClueConfig config;
+
+	@Inject
+	private ClientToolbar clientToolbar;
+
+	@Inject
+	private ClientThread clientThread;
+
+	@Inject
+	private ItemManager itemManager;
+
+	@Inject
+	private WorldMapPointManager worldMapPointManager;
+
+	@Inject
+	private OverlayManager overlayManager;
+
+	@Inject
+	private WorldMapOverlay worldMapOverlay;
+
+	@Inject
+	private MouseManager mouseManager;
+
+	private DebugClueController debugController;
 
 	private Set<WorldPoint> currentDests;
 
@@ -96,9 +131,80 @@ public class ShortestCluePlugin extends Plugin
 	private static final WorldPoint SHERLOCK_LOCATION = new WorldPoint(2735, 3413, 0);
 	private static final WorldPoint CHARLIE_THE_TRAMP_LOCATION = new WorldPoint(3208, 3391, 0);
 
+	@Provides
+	ShortestClueConfig provideConfig(ConfigManager configManager)
+	{
+		return configManager.getConfig(ShortestClueConfig.class);
+	}
+
 	public ShortestCluePlugin() {
 		super();
 		this.currentDests = new HashSet<>();
+	}
+
+	private DebugClueController debug()
+	{
+		if (this.debugController == null)
+		{
+			this.debugController = new DebugClueController(this, client, config, clientToolbar, clientThread,
+				itemManager, worldMapPointManager, overlayManager, worldMapOverlay, mouseManager);
+		}
+		return this.debugController;
+	}
+
+	@Override
+	protected void startUp()
+	{
+		if (config.showDebugPanel())
+		{
+			debug().installPanel();
+		}
+		debug().updateMapOverlay();
+	}
+
+	@Subscribe
+	public void onConfigChanged(final ConfigChanged event)
+	{
+		if (!event.getGroup().equals("shortestclue"))
+		{
+			return;
+		}
+
+		debug().handleConfigChanged(event.getKey(), event.getNewValue());
+	}
+
+	@Override
+	protected void shutDown()
+	{
+		clearPathIfOurs();
+		if (this.debugController != null)
+		{
+			this.debugController.shutdown();
+			this.debugController = null;
+		}
+	}
+
+	@Subscribe
+	public void onGameTick(final GameTick event)
+	{
+		ClueScroll clue = debug().getFakeClue() != null ? debug().getFakeClue() : clueService.getClue();
+		if (clue == null)
+		{
+			debug().updateFakeClueMapPoints(null);
+			if (config.clearPathOnClueLost())
+			{
+				clearPathIfOurs();
+			}
+			return;
+		}
+
+		Set<WorldPoint> newDests = computeDestinations(clue);
+
+		if (!newDests.isEmpty() && !newDests.equals(this.currentDests)) {
+			pathTo(newDests);
+		}
+
+		debug().updateFakeClueMapPoints(clue);
 	}
 
 	private void clearPathIfOurs()
@@ -141,16 +247,8 @@ public class ShortestCluePlugin extends Plugin
 		return REMAPPED_DESTINATIONS.getOrDefault(dest, dest);
 	}
 
-	@Subscribe
-	public void onGameTick(final GameTick event)
+	Set<WorldPoint> computeDestinations(ClueScroll clue)
 	{
-		ClueScroll clue = clueService.getClue();
-		if (clue == null)
-		{
-			clearPathIfOurs();
-			return;
-		}
-
 		Set<WorldPoint> newDests = new HashSet<>();
 		if (clue instanceof LocationsClueScroll)
 		{
@@ -183,15 +281,6 @@ public class ShortestCluePlugin extends Plugin
 				newDests.add(CHARLIE_THE_TRAMP_LOCATION);
 			}
 		}
-
-		if (!newDests.isEmpty() && !newDests.equals(this.currentDests)) {
-			pathTo(newDests);
-		}
-	}
-
-	@Override
-	protected void shutDown()
-	{
-		clearPathIfOurs();
+		return newDests;
 	}
 }
