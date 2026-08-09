@@ -1,6 +1,7 @@
 package com.shortestclue;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -38,12 +39,15 @@ public class ShortestCluePlugin extends Plugin
 	private ConfigManager configManager;
 
 	@Inject
-    private ClueScrollService clueService;
+	private ClueScrollPlugin clueScrollPlugin;
+
+	@Inject
+	private ClueScrollService clueService;
 
 	@Inject
 	EventBus eventBus;
 
-	private WorldPoint currentDest;
+	private Set<WorldPoint> currentDests;
 
 	/**
 	 * Clue steps that are only reachable through the Wilderness, so their path is
@@ -94,41 +98,47 @@ public class ShortestCluePlugin extends Plugin
 
 	public ShortestCluePlugin() {
 		super();
-		this.currentDest = null;
+		this.currentDests = new HashSet<>();
 	}
 
 	private void clearPathIfOurs()
 	{
-		if (this.currentDest == null)
+		if (this.currentDests.isEmpty())
 		{
 			return;
 		}
-		this.currentDest = null;
+		this.currentDests.clear();
 		eventBus.post(new PluginMessage("shortestpath", "clear", new HashMap<>()));
 	}
 
-	public void pathTo(WorldPoint target)
+	public void pathTo(Set<WorldPoint> targets)
 	{
-		if (client.getLocalPlayer() == null)
+		if (client.getLocalPlayer() == null || targets == null || targets.isEmpty())
 		{
 			return;
 		}
 
-		this.currentDest = target;
+		this.currentDests = new HashSet<>(targets);
 
 		// Only the identified steps override avoidWilderness; every other path
 		// sends back the user's current setting so a prior override doesn't leak.
+		boolean wildernessRequired = targets.stream().anyMatch(WILDERNESS_REQUIRED_TARGETS::contains);
 		String avoidWildernessConfig = configManager.getConfiguration("shortestpath", "avoidWilderness");
 		boolean avoidWilderness = avoidWildernessConfig == null || Boolean.parseBoolean(avoidWildernessConfig);
 
 		Map<String, Object> data = new HashMap<>();
 		data.put("start", client.getLocalPlayer().getWorldLocation());
-		data.put("target", target);
+		data.put("target", targets);
 
 		Map<String, Object> configOverride = new HashMap<>();
-		configOverride.put("avoidWilderness", WILDERNESS_REQUIRED_TARGETS.contains(target) ? Boolean.FALSE : avoidWilderness);
+		configOverride.put("avoidWilderness", wildernessRequired ? Boolean.FALSE : avoidWilderness);
 		data.put("config", configOverride);
 		eventBus.post(new PluginMessage("shortestpath", "path", data));
+	}
+
+	private WorldPoint applyRemap(WorldPoint dest)
+	{
+		return REMAPPED_DESTINATIONS.getOrDefault(dest, dest);
 	}
 
 	@Subscribe
@@ -141,38 +151,41 @@ public class ShortestCluePlugin extends Plugin
 			return;
 		}
 
-		WorldPoint newDest = null;
+		Set<WorldPoint> newDests = new HashSet<>();
 		if (clue instanceof LocationsClueScroll)
 		{
-			// TODO: Edge case of the Cipher Step for Eluned & Cryptic clue for Viggora - the only cases where "plugin" is currently used
-			WorldPoint[] dests = ((LocationsClueScroll)clue).getLocations(null);
-			if (dests.length > 0) newDest = dests[0];
+			for (WorldPoint wp : ((LocationsClueScroll)clue).getLocations(clueScrollPlugin))
+			{
+				if (wp != null)
+				{
+					newDests.add(applyRemap(wp));
+				}
+			}
 		}
-		if (clue instanceof LocationClueScroll)
+		else if (clue instanceof LocationClueScroll)
 		{
-			newDest = ((LocationClueScroll)clue).getLocation(null);
+			WorldPoint wp = ((LocationClueScroll)clue).getLocation(clueScrollPlugin);
+			if (wp != null)
+			{
+				newDests.add(applyRemap(wp));
+			}
 		}
 		if (clue instanceof FaloTheBardClue) {
-			newDest = FALO_THE_BARD_LOCATION;
+			newDests.add(FALO_THE_BARD_LOCATION);
 		}
 		if (clue instanceof SkillChallengeClue) {
-			if (((SkillChallengeClue)clue).getNpcs(null)[0] == "Sherlock")
+			if (((SkillChallengeClue)clue).getNpcs(clueScrollPlugin)[0].equals("Sherlock"))
 			{
-				newDest = SHERLOCK_LOCATION;
+				newDests.add(SHERLOCK_LOCATION);
 			}
 			else
 			{
-				newDest = CHARLIE_THE_TRAMP_LOCATION;
+				newDests.add(CHARLIE_THE_TRAMP_LOCATION);
 			}
 		}
 
-		if (newDest != null && REMAPPED_DESTINATIONS.containsKey(newDest))
-		{
-			newDest = REMAPPED_DESTINATIONS.get(newDest);
-		}
-
-		if (newDest != null && !newDest.equals(this.currentDest)) {
-			pathTo(newDest);
+		if (!newDests.isEmpty() && !newDests.equals(this.currentDests)) {
+			pathTo(newDests);
 		}
 	}
 
