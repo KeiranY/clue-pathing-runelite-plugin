@@ -405,6 +405,10 @@ final class ClueDebugInfo
 		{
 			return describeCipher((CipherClue) clue, plugin);
 		}
+		if (clue instanceof CoordinateClue)
+		{
+			return describeCoordinate((CoordinateClue) clue, plugin);
+		}
 		return null;
 	}
 
@@ -490,5 +494,29 @@ final class ClueDebugInfo
 			// never let a single cipher's text break the panel
 		}
 		return sb.toString();
+	}
+
+	// CoordinateClue's location field getter is private; use the LocationClueScroll
+	// accessor (plugin is threaded in). Text mirrors the in-game sextant reading:
+	// minutes = (tile - reference) * 15 / 8 with integer truncation toward zero,
+	// which matches the game on both sides of the equator.
+	private static String describeCoordinate(CoordinateClue clue, ClueScrollPlugin plugin)
+	{
+		WorldPoint location = clue.getLocation(plugin);
+		if (location == null)
+		{
+			return null;
+		}
+		String latitude = coordinatePart(location.getY(), 3161, "north", "south");
+		String longitude = coordinatePart(location.getX(), 2440, "east", "west");
+		return latitude + ", " + longitude;
+	}
+
+	private static String coordinatePart(int tile, int reference, String positive, String negative)
+	{
+		int minutes = (tile - reference) * 15 / 8;
+		int absolute = Math.abs(minutes);
+		String direction = minutes >= 0 ? positive : negative;
+		return String.format("%02d degrees %02d minutes %s", absolute / 60, absolute % 60, direction);
 	}
 }
