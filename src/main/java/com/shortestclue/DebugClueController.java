@@ -24,6 +24,8 @@ import net.runelite.client.util.ImageUtil;
  */
 class DebugClueController
 {
+	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DebugClueController.class);
+
 	private final ShortestCluePlugin plugin;
 	private final Client client;
 	private final ShortestClueConfig config;
@@ -187,7 +189,16 @@ class DebugClueController
 			return;
 		}
 
-		Set<WorldPoint> dests = plugin.computeDestinations(clue);
+		final Set<WorldPoint> dests;
+		try
+		{
+			dests = plugin.computeDestinations(clue);
+		}
+		catch (Exception e)
+		{
+			log.warn("Failed to resolve destinations for fake clue {}", clue.getClass().getSimpleName(), e);
+			return;
+		}
 		if (dests.isEmpty())
 		{
 			return;

@@ -41,6 +41,8 @@ import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 @PluginDependency(ClueScrollPlugin.class)
 public class ShortestCluePlugin extends Plugin
 {
+	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ShortestCluePlugin.class);
+
 	@Inject
 	private Client client;
 
@@ -198,7 +200,17 @@ public class ShortestCluePlugin extends Plugin
 			return;
 		}
 
-		Set<WorldPoint> newDests = computeDestinations(clue);
+		final Set<WorldPoint> newDests;
+		try
+		{
+			newDests = computeDestinations(clue);
+		}
+		catch (Exception e)
+		{
+			log.warn("Failed to resolve clue destinations for {}", clue.getClass().getSimpleName(), e);
+			debug().updateFakeClueMapPoints(null);
+			return;
+		}
 
 		if (!newDests.isEmpty() && !newDests.equals(this.currentDests)) {
 			pathTo(newDests);
