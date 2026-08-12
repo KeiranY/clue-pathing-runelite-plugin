@@ -154,6 +154,11 @@ public class ShortestCluePlugin extends Plugin
 		return this.debugController;
 	}
 
+	ClueScrollPlugin getClueScrollPlugin()
+	{
+		return clueScrollPlugin;
+	}
+
 	@Override
 	protected void startUp()
 	{

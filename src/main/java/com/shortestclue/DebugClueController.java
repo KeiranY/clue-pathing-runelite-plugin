@@ -74,7 +74,7 @@ class DebugClueController
 		this.panelPending = true;
 		this.clientThread.invoke(() ->
 		{
-			final List<CluePickerPanel.ClueEntry> entries = ClueDebugInfo.buildClueEntries(this.plugin::computeDestinations);
+			final List<CluePickerPanel.ClueEntry> entries = ClueDebugInfo.buildClueEntries(this.plugin.getClueScrollPlugin(), this.plugin::computeDestinations);
 			SwingUtilities.invokeLater(() ->
 			{
 				this.panelPending = false;
@@ -204,7 +204,7 @@ class DebugClueController
 			return;
 		}
 
-		String tooltip = ClueDebugInfo.describeClue(clue, dests);
+		String tooltip = ClueDebugInfo.describeClue(clue, dests, this.plugin.getClueScrollPlugin());
 		for (WorldPoint dest : dests)
 		{
 			worldMapPointManager.add(new FakeClueWorldMapPoint(dest,
