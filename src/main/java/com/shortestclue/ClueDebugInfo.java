@@ -9,9 +9,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.client.plugins.cluescrolls.ClueScrollPlugin;
 import net.runelite.client.plugins.cluescrolls.clues.AnagramClue;
 import net.runelite.client.plugins.cluescrolls.clues.BeginnerMapClue;
+import net.runelite.client.plugins.cluescrolls.clues.CipherClue;
 import net.runelite.client.plugins.cluescrolls.clues.ClueScroll;
+import net.runelite.client.plugins.cluescrolls.clues.CoordinateClue;
 import net.runelite.client.plugins.cluescrolls.clues.CrypticClue;
 import net.runelite.client.plugins.cluescrolls.clues.EmoteClue;
 import net.runelite.client.plugins.cluescrolls.clues.FaloTheBardClue;
@@ -29,19 +32,21 @@ final class ClueDebugInfo
 
 	private static final Class<?>[] CLUE_LIST_CLASSES = new Class<?>[] {
 		CrypticClue.class, AnagramClue.class, MapClue.class, BeginnerMapClue.class,
-		EmoteClue.class, FaloTheBardClue.class, SkillChallengeClue.class
+		EmoteClue.class, FaloTheBardClue.class, SkillChallengeClue.class,
+		CipherClue.class, CoordinateClue.class
 	};
 
 	private ClueDebugInfo()
 	{
 	}
 
-	static List<CluePickerPanel.ClueEntry> buildClueEntries(Function<ClueScroll, Set<WorldPoint>> destResolver)
+	static List<CluePickerPanel.ClueEntry> buildClueEntries(ClueScrollPlugin clueScrollPlugin, Function<ClueScroll, Set<WorldPoint>> destResolver)
 	{
 		List<CluePickerPanel.ClueEntry> entries = new ArrayList<>();
 		for (ClueScroll clue : enumerateClues())
 		{
-			final Set<WorldPoint> dests;
+			Set<WorldPoint> dests;
+			String failure = null;
 			try
 			{
 				dests = destResolver.apply(clue);
@@ -49,13 +54,15 @@ final class ClueDebugInfo
 			catch (Exception e)
 			{
 				log.warn("Failed to resolve destinations for {}", clue.getClass().getSimpleName(), e);
-				continue;
+				dests = Set.of();
+				failure = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
 			}
-			if (dests.isEmpty())
+			String label = describeClue(clue, dests, clueScrollPlugin);
+			if (failure == null && dests.isEmpty())
 			{
-				continue;
+				label += "  (no location)";
 			}
-			entries.add(new CluePickerPanel.ClueEntry(tierOf(clue), typeOf(clue), describeClue(clue, dests), dests, clue));
+			entries.add(new CluePickerPanel.ClueEntry(tierOf(clue), typeOf(clue), label, dests, clue, failure));
 		}
 		return entries;
 	}
@@ -239,6 +246,14 @@ final class ClueDebugInfo
 				return id;
 			}
 		}
+		if (clue instanceof CipherClue)
+		{
+			return ((CipherClue) clue).getItemId();
+		}
+		if (clue instanceof CoordinateClue)
+		{
+			return ((CoordinateClue) clue).getItemId();
+		}
 		return null;
 	}
 
@@ -272,6 +287,14 @@ final class ClueDebugInfo
 		{
 			return "Skill Challenge";
 		}
+		if (clue instanceof CipherClue)
+		{
+			return "Cipher";
+		}
+		if (clue instanceof CoordinateClue)
+		{
+			return "Coordinate";
+		}
 		return clue.getClass().getSimpleName();
 	}
 
@@ -288,6 +311,16 @@ final class ClueDebugInfo
 				if (value instanceof List)
 				{
 					for (Object item : (List<?>) value)
+					{
+						if (item instanceof ClueScroll)
+						{
+							clues.add((ClueScroll) item);
+						}
+					}
+				}
+				else if (value instanceof Map)
+				{
+					for (Object item : ((Map<?, ?>) value).values())
 					{
 						if (item instanceof ClueScroll)
 						{
@@ -326,9 +359,9 @@ final class ClueDebugInfo
 		return clues;
 	}
 
-	static String describeClue(ClueScroll clue, Set<WorldPoint> dests)
+	static String describeClue(ClueScroll clue, Set<WorldPoint> dests, ClueScrollPlugin clueScrollPlugin)
 	{
-		String text = clueText(clue);
+		String text = clueText(clue, clueScrollPlugin);
 		StringBuilder sb = new StringBuilder();
 		if (text != null && !text.isEmpty())
 		{
@@ -342,7 +375,7 @@ final class ClueDebugInfo
 		return sb.toString();
 	}
 
-	private static String clueText(ClueScroll clue)
+	private static String clueText(ClueScroll clue, ClueScrollPlugin plugin)
 	{
 		if (clue instanceof CrypticClue)
 		{
@@ -364,6 +397,98 @@ final class ClueDebugInfo
 		{
 			return ((SkillChallengeClue) clue).getChallenge();
 		}
+		if (clue instanceof AnagramClue)
+		{
+			return describeAnagram((AnagramClue) clue, plugin);
+		}
+		if (clue instanceof CipherClue)
+		{
+			return describeCipher((CipherClue) clue, plugin);
+		}
 		return null;
+	}
+
+	// AnagramClue.getText() is not exposed (the text field is @Getter(AccessLevel.NONE));
+	// the text/npc/area live behind Function<ClueScrollPlugin, ...> providers, so the
+	// plugin is threaded through. Every access is guarded so one failing clue can't
+	// break the panel.
+	private static String describeAnagram(AnagramClue clue, ClueScrollPlugin plugin)
+	{
+		StringBuilder sb = new StringBuilder();
+		try
+		{
+			Function<ClueScrollPlugin, String> textProvider = clue.getTextProvider();
+			if (textProvider != null)
+			{
+				String text = textProvider.apply(plugin);
+				if (text != null && !text.isEmpty())
+				{
+					sb.append(text);
+				}
+			}
+
+			String npc = null;
+			try
+			{
+				String[] npcs = clue.getNpcs(plugin);
+				if (npcs != null && npcs.length > 0)
+				{
+					npc = npcs[0];
+				}
+			}
+			catch (Exception e)
+			{
+				// some npc providers read varbits and can fail
+			}
+
+			String area = clue.getArea();
+			boolean hasNpc = npc != null && !npc.isEmpty();
+			boolean hasArea = area != null && !area.isEmpty();
+			if (hasNpc || hasArea)
+			{
+				sb.append(" (");
+				if (hasNpc)
+				{
+					sb.append(npc);
+				}
+				if (hasNpc && hasArea)
+				{
+					sb.append(", ");
+				}
+				if (hasArea)
+				{
+					sb.append(area);
+				}
+				sb.append(')');
+			}
+		}
+		catch (Exception e)
+		{
+			// never let a single anagram's text break the panel
+		}
+		return sb.toString();
+	}
+
+	private static String describeCipher(CipherClue clue, ClueScrollPlugin plugin)
+	{
+		StringBuilder sb = new StringBuilder();
+		try
+		{
+			String text = clue.getText();
+			if (text != null && !text.isEmpty())
+			{
+				sb.append(text);
+			}
+			String[] npcs = clue.getNpcs(plugin);
+			if (npcs != null && npcs.length > 0 && npcs[0] != null && !npcs[0].isEmpty())
+			{
+				sb.append(" (").append(npcs[0]).append(')');
+			}
+		}
+		catch (Exception e)
+		{
+			// never let a single cipher's text break the panel
+		}
+		return sb.toString();
 	}
 }

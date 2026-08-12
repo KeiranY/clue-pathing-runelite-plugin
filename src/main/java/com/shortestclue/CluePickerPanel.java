@@ -47,14 +47,16 @@ public class CluePickerPanel extends PluginPanel
 		private final Set<WorldPoint> dests;
 		private final ClueScroll clue;
 		private final String searchText;
+		private final String failure;
 
-		ClueEntry(String tier, String type, String label, Set<WorldPoint> dests, ClueScroll clue)
+		ClueEntry(String tier, String type, String label, Set<WorldPoint> dests, ClueScroll clue, String failure)
 		{
 			this.tier = tier;
 			this.type = type;
 			this.label = label;
 			this.dests = dests;
 			this.clue = clue;
+			this.failure = failure;
 			this.searchText = (type + " " + tier + " " + label).toLowerCase();
 		}
 
@@ -81,6 +83,11 @@ public class CluePickerPanel extends PluginPanel
 		ClueScroll getClue()
 		{
 			return this.clue;
+		}
+
+		String getFailure()
+		{
+			return this.failure;
 		}
 
 		boolean matches(String[] tokens)
@@ -134,12 +141,14 @@ public class CluePickerPanel extends PluginPanel
 	private static class MultiSelectComboBox extends JComboBox<CheckableItem>
 	{
 		private final String prefix;
+		private final Runnable onToggle;
 		private boolean keepPopupOpen;
 
-		MultiSelectComboBox(String prefix, List<String> options)
+		MultiSelectComboBox(String prefix, List<String> options, Runnable onToggle)
 		{
 			super(options.stream().map(CheckableItem::new).toArray(CheckableItem[]::new));
 			this.prefix = prefix;
+			this.onToggle = onToggle;
 			setRenderer(new CheckBoxRenderer());
 			addActionListener(e ->
 			{
@@ -152,6 +161,7 @@ public class CluePickerPanel extends PluginPanel
 					}
 					this.keepPopupOpen = true;
 					repaint();
+					this.onToggle.run();
 				}
 			});
 		}
@@ -274,10 +284,8 @@ public class CluePickerPanel extends PluginPanel
 				typeNames.add(entry.getType());
 			}
 		}
-		this.tierFilter = new MultiSelectComboBox("Tier", tierNames);
-		this.typeFilter = new MultiSelectComboBox("Type", typeNames);
-		this.tierFilter.addActionListener(e -> applyFilter());
-		this.typeFilter.addActionListener(e -> applyFilter());
+		this.tierFilter = new MultiSelectComboBox("Tier", tierNames, this::applyFilter);
+		this.typeFilter = new MultiSelectComboBox("Type", typeNames, this::applyFilter);
 
 		setLayout(new BorderLayout());
 		setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -473,11 +481,21 @@ public class CluePickerPanel extends PluginPanel
 		@Override
 		public Component getListCellRendererComponent(JList<? extends ClueEntry> list, ClueEntry value, int index, boolean isSelected, boolean cellHasFocus)
 		{
-			setText(value == null ? "" : value.getLabel());
+			String label = value == null ? "" : value.getLabel();
+			if (value != null && value.getFailure() != null)
+			{
+				label += "  [FAILED: " + value.getFailure() + "]";
+			}
+			setText(label);
 			if (isSelected)
 			{
 				setBackground(list.getSelectionBackground());
 				setForeground(list.getSelectionForeground());
+			}
+			else if (value != null && value.getFailure() != null)
+			{
+				setBackground(list.getBackground());
+				setForeground(Color.RED);
 			}
 			else
 			{
