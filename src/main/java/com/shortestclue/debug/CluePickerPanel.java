@@ -1,4 +1,4 @@
-package com.shortestclue;
+package com.shortestclue.debug;
 
 import java.awt.BorderLayout;
 import java.awt.Color;

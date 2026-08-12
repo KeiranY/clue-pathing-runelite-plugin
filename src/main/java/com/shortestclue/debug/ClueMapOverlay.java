@@ -1,4 +1,4 @@
-package com.shortestclue;
+package com.shortestclue.debug;
 
 import com.google.common.base.Splitter;
 import java.awt.Dimension;

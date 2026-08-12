@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 
 import com.google.inject.Provides;
+import com.shortestclue.debug.DebugClueController;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.coords.WorldPoint;
@@ -154,7 +155,7 @@ public class ShortestCluePlugin extends Plugin
 		return this.debugController;
 	}
 
-	ClueScrollPlugin getClueScrollPlugin()
+	public ClueScrollPlugin getClueScrollPlugin()
 	{
 		return clueScrollPlugin;
 	}
@@ -264,7 +265,7 @@ public class ShortestCluePlugin extends Plugin
 		return REMAPPED_DESTINATIONS.getOrDefault(dest, dest);
 	}
 
-	Set<WorldPoint> computeDestinations(ClueScroll clue)
+	public Set<WorldPoint> computeDestinations(ClueScroll clue)
 	{
 		Set<WorldPoint> newDests = new HashSet<>();
 		if (clue instanceof LocationsClueScroll)

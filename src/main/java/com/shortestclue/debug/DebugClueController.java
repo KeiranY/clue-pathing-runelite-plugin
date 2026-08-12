@@ -1,4 +1,4 @@
-package com.shortestclue;
+package com.shortestclue.debug;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,13 +16,15 @@ import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.worldmap.WorldMapOverlay;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 import net.runelite.client.util.ImageUtil;
+import com.shortestclue.ShortestClueConfig;
+import com.shortestclue.ShortestCluePlugin;
 
 /**
  * Owns all the debug features: the clue picker sidebar panel, the fake clue, the
  * tier-coloured world map icons and their click handling. The plugin only wires
  * this in and reads {@link #getFakeClue()} back for pathing.
  */
-class DebugClueController
+public class DebugClueController
 {
 	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DebugClueController.class);
 
@@ -45,7 +47,7 @@ class DebugClueController
 
 	private volatile List<CluePickerPanel.ClueEntry> visibleEntries = new ArrayList<>();
 
-	DebugClueController(ShortestCluePlugin plugin, Client client, ShortestClueConfig config,
+	public DebugClueController(ShortestCluePlugin plugin, Client client, ShortestClueConfig config,
 		ClientToolbar clientToolbar, ClientThread clientThread, ItemManager itemManager,
 		WorldMapPointManager worldMapPointManager, OverlayManager overlayManager,
 		WorldMapOverlay worldMapOverlay, MouseManager mouseManager)
@@ -62,7 +64,7 @@ class DebugClueController
 		this.mouseManager = mouseManager;
 	}
 
-	void installPanel()
+	public void installPanel()
 	{
 		if (this.navButton != null || this.panelPending)
 		{
@@ -107,7 +109,7 @@ class DebugClueController
 		this.cluePanel = null;
 	}
 
-	void shutdown()
+	public void shutdown()
 	{
 		removePanel();
 		worldMapPointManager.removeIf(FakeClueWorldMapPoint.class::isInstance);
@@ -119,7 +121,7 @@ class DebugClueController
 		}
 	}
 
-	void handleConfigChanged(String key, String value)
+	public void handleConfigChanged(String key, String value)
 	{
 		if (key.equals("showDebugPanel"))
 		{
@@ -149,7 +151,7 @@ class DebugClueController
 		}
 	}
 
-	ClueScroll getFakeClue()
+	public ClueScroll getFakeClue()
 	{
 		return this.fakeClue;
 	}
@@ -164,7 +166,7 @@ class DebugClueController
 		this.visibleEntries = new ArrayList<>(entries);
 	}
 
-	void updateMapOverlay()
+	public void updateMapOverlay()
 	{
 		boolean wanted = config.showDebugPanel() && config.showDebugMapIcons();
 		if (wanted && this.clueMapOverlay == null)
@@ -181,7 +183,7 @@ class DebugClueController
 		}
 	}
 
-	void updateFakeClueMapPoints(ClueScroll clue)
+	public void updateFakeClueMapPoints(ClueScroll clue)
 	{
 		worldMapPointManager.removeIf(FakeClueWorldMapPoint.class::isInstance);
 		if (clue == null)

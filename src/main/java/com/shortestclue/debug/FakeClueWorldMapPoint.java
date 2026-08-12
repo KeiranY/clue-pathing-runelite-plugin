@@ -1,4 +1,4 @@
-package com.shortestclue;
+package com.shortestclue.debug;
 
 import java.awt.image.BufferedImage;
 import net.runelite.api.Point;

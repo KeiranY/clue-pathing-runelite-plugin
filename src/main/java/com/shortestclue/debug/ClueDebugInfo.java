@@ -1,4 +1,4 @@
-package com.shortestclue;
+package com.shortestclue.debug;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
