@@ -106,28 +106,32 @@ public class ShortestCluePlugin extends Plugin
 	 * Certain clues report a destination that differs from the walkable tile, so their
 	 * destination is remapped before pathing (see https://github.com/runelite/runelite/pull/19302).
 	 */
-	private static final Map<WorldPoint, WorldPoint> REMAPPED_DESTINATIONS = Map.of(
+	private static final Map<WorldPoint, WorldPoint> REMAPPED_DESTINATIONS = Map.ofEntries(
 		// Heckel Funch, same tile but on plane 1
-		new WorldPoint(2490, 3488, 0), new WorldPoint(2490, 3488, 1),
+		Map.entry(new WorldPoint(2490, 3488, 0), new WorldPoint(2490, 3488, 1)),
 		// Ardougne Mill (#22) same tile but on plane 3
-		new WorldPoint(2635, 3385, 3), new WorldPoint(2635, 3385, 2),
+		Map.entry(new WorldPoint(2635, 3385, 3), new WorldPoint(2635, 3385, 2)),
 		// Ambassador Spanfipple, same tile but on plane 1
-		new WorldPoint(2979, 3340, 0), new WorldPoint(2979, 3340, 1),
+		Map.entry(new WorldPoint(2979, 3340, 0), new WorldPoint(2979, 3340, 1)),
 		// Iban's temple (#34) same tile but on plane 1
-		new WorldPoint(2011, 4712, 0), new WorldPoint(2011, 4712, 1),
+		Map.entry(new WorldPoint(2011, 4712, 0), new WorldPoint(2011, 4712, 1)),
 		// Hazelmere, same tile but on plane 1
-		new WorldPoint(2677, 3088, 0), new WorldPoint(2677, 3088, 1),
+		Map.entry(new WorldPoint(2677, 3088, 0), new WorldPoint(2677, 3088, 1)),
 
 		// Guardian Mummy (#36, #30) redirect to outside pyramid plunder
-		new WorldPoint(1934, 4427, 0), new WorldPoint(3289, 2787, 0),
+		Map.entry(new WorldPoint(1934, 4427, 0), new WorldPoint(3289, 2787, 0)),
 		// 7th room of Pyramid Plunder (#29) redirect to outside pyramid plunder
-		new WorldPoint(1944, 4427, 0), new WorldPoint(3289, 2787, 0),
+		Map.entry(new WorldPoint(1944, 4427, 0), new WorldPoint(3289, 2787, 0)),
 		// Mogre Camp (#24) redirect to Murphy
-		new WorldPoint(2953, 9523, 1), new WorldPoint(2668, 3162, 0),
+		Map.entry(new WorldPoint(2953, 9523, 1), new WorldPoint(2668, 3162, 0)),
 		// Top of the Agility Pyramid (#28) redirect to start of Agility Pyramid
-		new WorldPoint(3043, 4697, 3), new WorldPoint(3354, 2829, 0),
+		Map.entry(new WorldPoint(3043, 4697, 3), new WorldPoint(3354, 2829, 0)),
 		// Port Sarim jail bucket (#11) redirect to Shantay Pass
-		new WorldPoint(3013, 3179, 0), new WorldPoint(3305, 3120, 0)
+		Map.entry(new WorldPoint(3013, 3179, 0), new WorldPoint(3305, 3120, 0)),
+		// Daer Krand (DARN DRAKE), upstairs in the Sisterhood Sanctuary
+		Map.entry(new WorldPoint(3728, 3302, 0), new WorldPoint(3821, 9778, 2)),
+		// Sir Vyvin (Surviving.), on the second floor of Falador castle
+		Map.entry(new WorldPoint(2983, 3338, 0), new WorldPoint(2983, 3338, 2))
 	);
 
 	private static final WorldPoint FALO_THE_BARD_LOCATION = new WorldPoint(2689, 3550, 0);
