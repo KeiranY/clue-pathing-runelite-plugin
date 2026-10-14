@@ -49,4 +49,15 @@ public interface ShortestClueConfig extends Config
 	{
 		return true;
 	}
+
+	@ConfigItem(
+		keyName = "requireItems",
+		name = "Require items",
+		description = "Asks Shortest Path to bring items needed for the clue step, visiting a bank when necessary.",
+		position = 1
+	)
+	default boolean requireItems()
+	{
+		return true;
+	}
 }

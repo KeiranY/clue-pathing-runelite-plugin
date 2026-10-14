@@ -1,7 +1,9 @@
 package com.shortestclue;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -11,6 +13,7 @@ import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
@@ -86,6 +89,8 @@ public class ShortestCluePlugin extends Plugin
 	private DebugClueController debugController;
 
 	private Set<WorldPoint> currentDests;
+
+	private List<Integer> currentRequiredItems = List.of();
 
 	/**
 	 * Clue steps that are only reachable through the Wilderness, so their path is
@@ -218,11 +223,22 @@ public class ShortestCluePlugin extends Plugin
 			return;
 		}
 
-		if (!newDests.isEmpty() && !newDests.equals(this.currentDests)) {
-			pathTo(newDests);
+		List<Integer> requiredItems = requiredItems(clue);
+		if (!newDests.isEmpty() && (!newDests.equals(this.currentDests) || !requiredItems.equals(this.currentRequiredItems))) {
+			pathTo(newDests, requiredItems);
 		}
 
 		debug().updateFakeClueMapPoints(clue);
+	}
+
+	private List<Integer> requiredItems(ClueScroll clue)
+	{
+		List<Integer> items = new ArrayList<>();
+		if (config.requireItems() && clue.isRequiresSpade())
+		{
+			items.add(ItemID.SPADE);
+		}
+		return items;
 	}
 
 	private void clearPathIfOurs()
@@ -235,7 +251,10 @@ public class ShortestCluePlugin extends Plugin
 		eventBus.post(new PluginMessage("shortestpath", "clear", new HashMap<>()));
 	}
 
-	public void pathTo(Set<WorldPoint> targets)
+	/**
+	 * Paths to the closest target with all required items, visiting a bank when necessary.
+	 */
+	public void pathTo(Set<WorldPoint> targets, List<Integer> requiredItems)
 	{
 		if (client.getLocalPlayer() == null || targets == null || targets.isEmpty())
 		{
@@ -243,6 +262,7 @@ public class ShortestCluePlugin extends Plugin
 		}
 
 		this.currentDests = new HashSet<>(targets);
+		this.currentRequiredItems = List.copyOf(requiredItems);
 
 		// Only the identified steps override avoidWilderness; every other path
 		// sends back the user's current setting so a prior override doesn't leak.
@@ -252,12 +272,28 @@ public class ShortestCluePlugin extends Plugin
 
 		Map<String, Object> data = new HashMap<>();
 		data.put("start", client.getLocalPlayer().getWorldLocation());
-		data.put("target", targets);
+		data.put("target", targetMaps(targets, requiredItems));
 
 		Map<String, Object> configOverride = new HashMap<>();
 		configOverride.put("avoidWilderness", wildernessRequired ? Boolean.FALSE : avoidWilderness);
 		data.put("config", configOverride);
 		eventBus.post(new PluginMessage("shortestpath", "path", data));
+	}
+
+	private static Set<Map<String, Object>> targetMaps(Set<WorldPoint> targets, List<Integer> requiredItems)
+	{
+		Set<Map<String, Object>> targetMaps = new HashSet<>();
+		for (WorldPoint target : targets)
+		{
+			Map<String, Object> targetMap = new HashMap<>();
+			targetMap.put("point", target);
+			if (!requiredItems.isEmpty())
+			{
+				targetMap.put("requirements", requiredItems);
+			}
+			targetMaps.add(targetMap);
+		}
+		return targetMaps;
 	}
 
 	private WorldPoint applyRemap(WorldPoint dest)
