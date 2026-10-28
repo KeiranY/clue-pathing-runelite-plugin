@@ -32,6 +32,7 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.ListCellRenderer;
 import javax.swing.ListSelectionModel;
+import javax.swing.Timer;
 
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.cluescrolls.clues.ClueScroll;
@@ -247,6 +248,7 @@ public class CluePickerPanel extends PluginPanel
 	}
 
 	private final DefaultListModel<ClueEntry> listModel = new DefaultListModel<>();
+	private final Timer searchTimer = new Timer(150, event -> applyFilter());
 	private final Consumer<ClueScroll> onSelect;
 	private final Runnable onClear;
 	private final Consumer<List<ClueEntry>> onFilterChange;
@@ -263,6 +265,7 @@ public class CluePickerPanel extends PluginPanel
 
 	public CluePickerPanel(List<ClueEntry> clues, Consumer<ClueScroll> onSelect, Runnable onClear, Consumer<List<ClueEntry>> onFilterChange)
 	{
+		this.searchTimer.setRepeats(false);
 		this.onSelect = onSelect;
 		this.onClear = onClear;
 		this.onFilterChange = onFilterChange;
@@ -299,7 +302,7 @@ public class CluePickerPanel extends PluginPanel
 			@Override
 			protected void changed()
 			{
-				applyFilter();
+				searchTimer.restart();
 			}
 		});
 		top.add(this.searchField);
@@ -388,11 +391,10 @@ public class CluePickerPanel extends PluginPanel
 
 	private void applyFilter()
 	{
+		this.searchTimer.stop();
 		String query = this.searchField.getText().trim().toLowerCase();
 		String[] tokens = query.isEmpty() ? new String[0] : query.split("\\s+");
 
-		int visibleCount = 0;
-		this.listModel.clear();
 		List<ClueEntry> visible = new ArrayList<>();
 		for (ClueEntry entry : this.allClues)
 		{
@@ -408,12 +410,12 @@ public class CluePickerPanel extends PluginPanel
 			{
 				continue;
 			}
-			this.listModel.addElement(entry);
 			visible.add(entry);
-			visibleCount++;
 		}
 
-		this.countLabel.setText(visibleCount + " of " + this.allClues.size() + " clues");
+		this.listModel.clear();
+		this.listModel.addAll(visible);
+		this.countLabel.setText(visible.size() + " of " + this.allClues.size() + " clues");
 		this.onFilterChange.accept(visible);
 		if (this.currentFake != null)
 		{
