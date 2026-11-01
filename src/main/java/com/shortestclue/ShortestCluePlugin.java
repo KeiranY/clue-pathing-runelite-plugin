@@ -22,6 +22,7 @@ import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDependency;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.cluescrolls.ClueScrollPlugin;
 import net.runelite.client.plugins.cluescrolls.ClueScrollService;
 import net.runelite.client.plugins.cluescrolls.clues.ClueScroll;
@@ -51,6 +52,8 @@ public class ShortestCluePlugin extends Plugin
 	private ConfigManager configManager;
 
 	@Inject
+	private PluginManager pluginManager;
+
 	private ClueScrollPlugin clueScrollPlugin;
 
 	@Inject
@@ -163,6 +166,13 @@ public class ShortestCluePlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		// Since RuneLite 1.13.1 a plugin dependency only provides its services (ClueScrollService), not the plugin
+		// itself, which clue locations still need, so it's found among the loaded plugins
+		this.clueScrollPlugin = pluginManager.getPlugins().stream()
+			.filter(ClueScrollPlugin.class::isInstance)
+			.map(ClueScrollPlugin.class::cast)
+			.findFirst()
+			.orElse(null);
 		if (config.showDebugPanel())
 		{
 			debug().installPanel();
