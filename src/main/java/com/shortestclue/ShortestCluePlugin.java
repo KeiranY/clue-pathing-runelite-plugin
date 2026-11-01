@@ -37,6 +37,7 @@ import net.runelite.client.plugins.cluescrolls.clues.FaloTheBardClue;
 import net.runelite.client.plugins.cluescrolls.clues.LocationClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.LocationsClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.SkillChallengeClue;
+import net.runelite.client.plugins.cluescrolls.clues.emote.STASHUnit;
 import net.runelite.client.plugins.cluescrolls.clues.item.ItemRequirement;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -97,6 +98,9 @@ public class ShortestCluePlugin extends Plugin
 
 	@Inject
 	private StashOverlay stashOverlay;
+
+	@Inject
+	private StashReturn stashReturn;
 
 	private DebugClueController debugController;
 
@@ -197,8 +201,13 @@ public class ShortestCluePlugin extends Plugin
 	protected void startUp()
 	{
 		eventBus.register(stashUnits);
+		eventBus.register(stashReturn);
 		overlayManager.add(stashOverlay);
-		clientThread.invoke(stashUnits::load);
+		clientThread.invoke(() ->
+		{
+			stashUnits.load();
+			stashReturn.load();
+		});
 		if (config.showDebugPanel())
 		{
 			debug().installPanel();
@@ -222,6 +231,7 @@ public class ShortestCluePlugin extends Plugin
 	{
 		clearPathIfOurs();
 		eventBus.unregister(stashUnits);
+		eventBus.unregister(stashReturn);
 		overlayManager.remove(stashOverlay);
 		stashUnknown = false;
 		if (this.debugController != null)
@@ -237,6 +247,20 @@ public class ShortestCluePlugin extends Plugin
 		ClueScroll clue = debug().getFakeClue() != null ? debug().getFakeClue() : clueService.getClue();
 		stashUnknown = config.requireItems() && clue instanceof EmoteClue
 			&& stashUnits.isUnknown(((EmoteClue) clue).getStashUnit());
+
+		// The items taken out of a STASH unit for the last step go back in first
+		STASHUnit putBack = stashReturn.update(clue);
+		if (putBack != null)
+		{
+			Set<WorldPoint> unitTiles = new HashSet<>(Arrays.asList(putBack.getWorldPoints()));
+			if (!unitTiles.equals(this.currentDests) || !this.currentRequiredItems.isEmpty())
+			{
+				pathTo(unitTiles, List.of());
+			}
+			debug().updateFakeClueMapPoints(clue);
+			return;
+		}
+
 		if (clue == null)
 		{
 			debug().updateFakeClueMapPoints(null);

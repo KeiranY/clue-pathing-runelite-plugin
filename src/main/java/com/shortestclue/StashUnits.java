@@ -87,6 +87,7 @@ public class StashUnits
 
 	private final Client client;
 	private final ConfigManager configManager;
+	private final StashReturn stashReturn;
 
 	/**
 	 * Unit -> filled (true) or empty (false); units not in it aren't known.
@@ -100,10 +101,19 @@ public class StashUnits
 	private Map<Integer, Integer> searchedItems;
 
 	@Inject
-	StashUnits(Client client, ConfigManager configManager)
+	StashUnits(Client client, ConfigManager configManager, StashReturn stashReturn)
 	{
 		this.client = client;
 		this.configManager = configManager;
+		this.stashReturn = stashReturn;
+	}
+
+	/**
+	 * The unit with this object id, or null.
+	 */
+	static STASHUnit unit(int objectId)
+	{
+		return UNITS.get(objectId);
 	}
 
 	/**
@@ -245,7 +255,7 @@ public class StashUnits
 		{
 			searched = unit;
 			searchedTick = client.getTickCount();
-			searchedItems = carried();
+			searchedItems = carried(client);
 			return;
 		}
 		searched = null;
@@ -266,7 +276,7 @@ public class StashUnits
 			return;
 		}
 
-		Map<Integer, Integer> items = carried();
+		Map<Integer, Integer> items = carried(client);
 		if (!isNear(client.getLocalPlayer().getWorldLocation(), searched))
 		{
 			// Still on the way: a change there is something else
@@ -282,6 +292,10 @@ public class StashUnits
 		if (put != null)
 		{
 			news(searched.getObjectId(), put, put ? "items put in" : "items taken out");
+		}
+		if (Boolean.FALSE.equals(put))
+		{
+			stashReturn.tookOut(searched, added(searchedItems, items));
 		}
 		searched = null;
 	}
@@ -302,7 +316,7 @@ public class StashUnits
 	/**
 	 * What the player carries and wears: item id -> count.
 	 */
-	private Map<Integer, Integer> carried()
+	static Map<Integer, Integer> carried(Client client)
 	{
 		Map<Integer, Integer> items = new HashMap<>();
 		for (int id : new int[]{InventoryID.INV, InventoryID.WORN})
@@ -324,6 +338,10 @@ public class StashUnits
 
 	private void news(int unit, boolean isFilled, String source)
 	{
+		if (isFilled)
+		{
+			stashReturn.filled(unit);
+		}
 		if (Boolean.valueOf(isFilled).equals(filled.put(unit, isFilled)))
 		{
 			return;
@@ -411,6 +429,22 @@ public class StashUnits
 			come |= change > 0;
 		}
 		return gone == come ? null : gone;
+	}
+
+	/**
+	 * The items that came: item id -> how many more.
+	 */
+	static Map<Integer, Integer> added(Map<Integer, Integer> before, Map<Integer, Integer> after)
+	{
+		Map<Integer, Integer> added = new TreeMap<>();
+		after.forEach((id, count) ->
+		{
+			if (count > before.getOrDefault(id, 0))
+			{
+				added.put(id, count - before.getOrDefault(id, 0));
+			}
+		});
+		return added;
 	}
 
 	/**
