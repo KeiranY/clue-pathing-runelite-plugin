@@ -116,6 +116,15 @@ public class StashUnits
 	}
 
 	/**
+	 * True if the unit is built but not known to be filled or empty, and the STASH chart can tell.
+	 */
+	public boolean isUnknown(STASHUnit unit)
+	{
+		return unit != null && unit.getObjectId() != CHART_NEVER_FILLED && !filled.containsKey(unit.getObjectId())
+			&& built(unit.getObjectId(), enumValues(BUILT_ENUM), client::getVarpValue);
+	}
+
+	/**
 	 * Loads the logged-in account's units.
 	 */
 	public void load()

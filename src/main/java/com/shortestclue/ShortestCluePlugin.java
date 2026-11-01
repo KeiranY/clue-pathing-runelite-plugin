@@ -8,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntPredicate;
 
 import com.google.inject.Provides;
 import com.shortestclue.debug.DebugClueController;
@@ -94,6 +95,9 @@ public class ShortestCluePlugin extends Plugin
 	@Inject
 	private StashUnits stashUnits;
 
+	@Inject
+	private StashOverlay stashOverlay;
+
 	private DebugClueController debugController;
 
 	private Set<WorldPoint> currentDests;
@@ -105,6 +109,11 @@ public class ShortestCluePlugin extends Plugin
 	private Item[] emoteItemsCarried;
 
 	private List<Set<Integer>> emoteItems = List.of();
+
+	/**
+	 * Whether the emote clue's STASH unit is built but not known to be filled or empty.
+	 */
+	private volatile boolean stashUnknown;
 
 	/**
 	 * Clue steps that are only reachable through the Wilderness, so their path is
@@ -179,10 +188,16 @@ public class ShortestCluePlugin extends Plugin
 		return clueScrollPlugin;
 	}
 
+	boolean isStashUnknown()
+	{
+		return stashUnknown;
+	}
+
 	@Override
 	protected void startUp()
 	{
 		eventBus.register(stashUnits);
+		overlayManager.add(stashOverlay);
 		clientThread.invoke(stashUnits::load);
 		if (config.showDebugPanel())
 		{
@@ -207,6 +222,8 @@ public class ShortestCluePlugin extends Plugin
 	{
 		clearPathIfOurs();
 		eventBus.unregister(stashUnits);
+		overlayManager.remove(stashOverlay);
+		stashUnknown = false;
 		if (this.debugController != null)
 		{
 			this.debugController.shutdown();
@@ -218,6 +235,8 @@ public class ShortestCluePlugin extends Plugin
 	public void onGameTick(final GameTick event)
 	{
 		ClueScroll clue = debug().getFakeClue() != null ? debug().getFakeClue() : clueService.getClue();
+		stashUnknown = config.requireItems() && clue instanceof EmoteClue
+			&& stashUnits.isUnknown(((EmoteClue) clue).getStashUnit());
 		if (clue == null)
 		{
 			debug().updateFakeClueMapPoints(null);
@@ -281,7 +300,8 @@ public class ShortestCluePlugin extends Plugin
 		{
 			emoteItemsClue = clue;
 			emoteItemsCarried = carried;
-			emoteItems = itemsNeeded(clue.getItemRequirements(), carried, client.getItemCount());
+			emoteItems = itemsNeeded(clue.getItemRequirements(), carried, client.getItemCount(),
+				id -> client.getItemDefinition(id).getNote() != -1);
 		}
 		return emoteItems;
 	}
@@ -301,8 +321,10 @@ public class ShortestCluePlugin extends Plugin
 	 * every group is needed, and any one item of a group will do (e.g. any charge of a ring). When several sets
 	 * will do, one of them is asked for. A requirement no item can meet ("nothing on your head") is left out.
 	 * The bank isn't looked at: Shortest Path checks it, and visits a bank first when the items are there.
+	 *
+	 * @param noted whether an item id is a noted copy, which can't be worn, so it's never asked for
 	 */
-	static List<Set<Integer>> itemsNeeded(ItemRequirement[] requirements, Item[] carried, int itemCount)
+	static List<Set<Integer>> itemsNeeded(ItemRequirement[] requirements, Item[] carried, int itemCount, IntPredicate noted)
 	{
 		List<Set<Integer>> groups = new ArrayList<>();
 		for (ItemRequirement requirement : requirements)
@@ -315,7 +337,7 @@ public class ShortestCluePlugin extends Plugin
 			List<Item> candidates = new ArrayList<>();
 			for (int id = 0; id < itemCount; id++)
 			{
-				if (requirement.fulfilledBy(id))
+				if (requirement.fulfilledBy(id) && !noted.test(id))
 				{
 					candidates.add(new Item(id, 1));
 				}

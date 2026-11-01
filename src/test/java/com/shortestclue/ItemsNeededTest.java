@@ -41,7 +41,15 @@ public class ItemsNeededTest
 
 	private static List<Set<Integer>> needed(Item[] carried, ItemRequirement... requirements)
 	{
-		return ShortestCluePlugin.itemsNeeded(requirements, carried, ITEM_COUNT);
+		return ShortestCluePlugin.itemsNeeded(requirements, carried, ITEM_COUNT, id -> false);
+	}
+
+	@Test
+	public void notedItemsAreNotAskedFor()
+	{
+		// A range like RuneLite's combat bracelets holds the noted copies too (here the odd ids)
+		assertEquals(List.of(Set.of(10, 12)), ShortestCluePlugin.itemsNeeded(
+			new ItemRequirement[]{range("Staff", STAFF_FULL, STAFF_EMPTY)}, items(), ITEM_COUNT, id -> id == 11));
 	}
 
 	@Test
