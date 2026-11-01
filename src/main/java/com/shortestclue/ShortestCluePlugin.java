@@ -11,6 +11,7 @@ import com.google.inject.Provides;
 import com.shortestclue.debug.DebugClueController;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.api.Item;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.gameval.ItemID;
@@ -21,6 +22,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.PluginMessage;
 import net.runelite.client.game.ItemManager;
+import net.runelite.client.game.ItemVariationMapping;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDependency;
@@ -28,6 +30,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.cluescrolls.ClueScrollPlugin;
 import net.runelite.client.plugins.cluescrolls.ClueScrollService;
 import net.runelite.client.plugins.cluescrolls.clues.ClueScroll;
+import net.runelite.client.plugins.cluescrolls.clues.CrypticClue;
 import net.runelite.client.plugins.cluescrolls.clues.FaloTheBardClue;
 import net.runelite.client.plugins.cluescrolls.clues.LocationClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.LocationsClueScroll;
@@ -90,7 +93,7 @@ public class ShortestCluePlugin extends Plugin
 
 	private Set<WorldPoint> currentDests;
 
-	private List<Integer> currentRequiredItems = List.of();
+	private List<Set<Integer>> currentRequiredItems = List.of();
 
 	/**
 	 * Clue steps that are only reachable through the Wilderness, so their path is
@@ -134,6 +137,181 @@ public class ShortestCluePlugin extends Plugin
 		// Port Sarim jail bucket (#11) redirect to Shantay Pass
 		new WorldPoint(3013, 3179, 0), new WorldPoint(3305, 3120, 0)
 	);
+
+	/**
+	 * Elite "kill" steps have no location in RuneLite, so they path to the nearest place the monster is
+	 * found, keyed by the clue text. Places are the spawns listed on each monster's OSRS Wiki page, one
+	 * tile per group of spawns; areas only open on a Slayer task or during a quest are left out.
+	 */
+	static final Map<String, Set<WorldPoint>> KILL_LOCATIONS = Map.ofEntries(
+		// Aberrant or Deviant spectre (Wiki: Deviant spectre, Aberrant spectre)
+		Map.entry("You'll have to plug your nose if you use this source of herbs.", Set.of(
+			new WorldPoint(1651, 9989, 0), // Catacombs of Kourend
+			new WorldPoint(1609, 10011, 0), // Catacombs of Kourend
+			new WorldPoint(2055, 9209, 0), // Deepfin Mine
+			new WorldPoint(3428, 3543, 1) // Slayer Tower
+		)),
+		// Ankou (Wiki: Ankou)
+		Map.entry("Ghostly bones.", Set.of(
+			new WorldPoint(1643, 9996, 0), // Catacombs of Kourend
+			new WorldPoint(2056, 9173, 0), // Deepfin Mine
+			new WorldPoint(2977, 3748, 0), // The Forgotten Cemetery
+			new WorldPoint(2322, 5227, 0), // Stronghold of Security: Sepulchre of Death
+			new WorldPoint(2326, 5201, 0), // Stronghold of Security: Sepulchre of Death
+			new WorldPoint(2359, 5241, 0), // Stronghold of Security: Sepulchre of Death
+			new WorldPoint(3361, 10076, 0) // Wilderness Slayer Cave
+		)),
+		// Waterfiend (Wiki: Waterfiend)
+		Map.entry("Let's hope you don't meet a watery death when you encounter this fiend.", Set.of(
+			new WorldPoint(1752, 5351, 0), // Ancient Cavern
+			new WorldPoint(3163, 12454, 0), // Iorwerth Dungeon
+			new WorldPoint(3187, 12451, 0), // Iorwerth Dungeon
+			new WorldPoint(3179, 12475, 0) // Iorwerth Dungeon
+		)),
+		// Basilisk (Wiki: Basilisk, Basilisk Knight)
+		Map.entry("Reflection is the weakness for these eyes of evil.", Set.of(
+			new WorldPoint(2742, 10008, 0), // Fremennik Slayer Dungeon
+			new WorldPoint(2467, 10398, 0), // Jormungand's Prison
+			new WorldPoint(2421, 10384, 0) // Jormungand's Prison
+		)),
+		// Rock crab (Wiki: Rock Crab)
+		Map.entry("You might have to turn over a few stones to progress.", Set.of(
+			new WorldPoint(2687, 3724, 0), // North of Rellekka
+			new WorldPoint(2529, 3740, 0), // Waterbirth Island
+			new WorldPoint(2521, 3756, 0), // Waterbirth Island
+			new WorldPoint(2531, 3721, 0), // Waterbirth Island
+			new WorldPoint(1204, 3557, 0), // West of Mount Quidamortem
+			new WorldPoint(2456, 10161, 0), // Waterbirth Island Dungeon
+			new WorldPoint(2748, 10166, 0), // Brine Rat Cavern
+			new WorldPoint(2739, 10153, 0), // Brine Rat Cavern
+			new WorldPoint(2706, 10159, 0), // Brine Rat Cavern
+			new WorldPoint(2650, 2411, 0) // Charred Island
+		)),
+		// Bloodveld (Wiki: Bloodveld, Mutated Bloodveld)
+		Map.entry("You'll get licked.", Set.of(
+			new WorldPoint(2886, 5323, 2), // God Wars Dungeon
+			new WorldPoint(2886, 5359, 2), // God Wars Dungeon
+			new WorldPoint(2928, 5356, 2), // God Wars Dungeon
+			new WorldPoint(2845, 5283, 2), // God Wars Dungeon
+			new WorldPoint(2873, 5299, 2), // God Wars Dungeon
+			new WorldPoint(2854, 5355, 2), // God Wars Dungeon
+			new WorldPoint(2862, 5336, 2), // God Wars Dungeon
+			new WorldPoint(3572, 9741, 0), // Meiyerditch Laboratories
+			new WorldPoint(3594, 9742, 0), // Meiyerditch Laboratories
+			new WorldPoint(3417, 3565, 1), // Slayer Tower
+			new WorldPoint(3036, 10139, 0), // Wilderness God Wars Dungeon
+			new WorldPoint(2092, 10096, 0), // Buccaneers' Laboratory
+			new WorldPoint(1631, 10032, 0), // Catacombs of Kourend
+			new WorldPoint(1678, 10073, 0), // Catacombs of Kourend
+			new WorldPoint(1691, 10016, 0), // Catacombs of Kourend
+			new WorldPoint(3239, 12433, 0) // Iorwerth Dungeon
+		)),
+		// Aviansie (Wiki: Aviansie)
+		Map.entry("You will have to fly high where a sword cannot help you.", Set.of(
+			new WorldPoint(2855, 5283, 2), // God Wars Dungeon
+			new WorldPoint(3025, 10152, 0) // Wilderness God Wars Dungeon
+		)),
+		// Green or brutal green dragon (Wiki: Green dragon, Brutal green dragon)
+		Map.entry("Mix yellow with blue and add heat, make sure you bring protection.", Set.of(
+			new WorldPoint(3339, 3694, 0), // East of the Bone Yard
+			new WorldPoint(2982, 3618, 0), // West of the Dark Warriors' Fortress
+			new WorldPoint(3140, 3700, 0), // North of the Graveyard of Shadows
+			new WorldPoint(3158, 3708, 0), // North of the Graveyard of Shadows
+			new WorldPoint(3078, 3810, 0), // South of the Lava Maze
+			new WorldPoint(3107, 3812, 0), // South of the Lava Maze
+			new WorldPoint(3415, 10068, 0), // Wilderness Slayer Cave
+			new WorldPoint(3396, 10119, 0), // Wilderness Slayer Cave
+			new WorldPoint(1939, 8991, 1), // Myths' Guild basement
+			new WorldPoint(1771, 5340, 0) // Ancient Cavern
+		)),
+		// Crocodile (Wiki: Crocodile)
+		Map.entry("In a while...", Set.of(
+			new WorldPoint(3347, 2927, 0), // Along the River Elid
+			new WorldPoint(3301, 2920, 0), // Along the River Elid
+			new WorldPoint(3268, 2854, 0), // Along the River Elid
+			new WorldPoint(3190, 2825, 0), // Near the Ruins of Unkah
+			new WorldPoint(3421, 2772, 0) // Near the Ruins of Ullek
+		)),
+		// Hellhound (Wiki: Hellhound)
+		Map.entry("A demon's best friend holds the next step of this clue.", Set.of(
+			new WorldPoint(3176, 3950, 0), // Outside the Wilderness Resource Area
+			new WorldPoint(3180, 3917, 0), // Outside the Wilderness Resource Area
+			new WorldPoint(2740, 9688, 0), // Witchaven Dungeon
+			new WorldPoint(2861, 9837, 0), // Taverley Dungeon
+			new WorldPoint(1643, 10063, 0), // Catacombs of Kourend
+			new WorldPoint(2629, 8864, 0), // Charred Dungeon
+			new WorldPoint(1340, 10198, 2), // Karuulm Slayer Dungeon
+			new WorldPoint(2078, 10070, 0), // Buccaneers' Laboratory
+			new WorldPoint(2881, 5324, 2), // God Wars Dungeon
+			new WorldPoint(2837, 5335, 2), // God Wars Dungeon
+			new WorldPoint(2892, 5302, 2), // God Wars Dungeon
+			new WorldPoint(2915, 5345, 2), // God Wars Dungeon
+			new WorldPoint(3440, 10085, 0) // Wilderness Slayer Cave
+		)),
+		// Frost nagua (Wiki: Frost Nagua)
+		Map.entry("Banish a chilling spirit.", Set.of(
+			new WorldPoint(1638, 9630, 0) // Ruins of Tapoyauik
+		)),
+		// Earthen nagua (Wiki: Earthen Nagua)
+		Map.entry("Crush the spirited earth.", Set.of(
+			new WorldPoint(1291, 9415, 1), // Tonali Cavern
+			new WorldPoint(1295, 9370, 0), // Tonali Cavern
+			new WorldPoint(1333, 9378, 0) // Tonali Cavern
+		))
+	);
+
+	/**
+	 * The ferocious barbarian spirit step: kill a barbarian in the Ancient Cavern for mangled bones, then burn
+	 * them on a pyre ship, where the spirit appears.
+	 */
+	static final String BARBARIAN_SPIRIT_STEP = "Surround my bones in fire, ontop the wooden pyre. Finally lay me to rest, before my one last test.";
+
+	/** The barbarians that drop the mangled bones (Wiki: Confused barbarian, Lost barbarian). */
+	static final Set<WorldPoint> MANGLED_BONES_BARBARIANS = Set.of(
+		new WorldPoint(1767, 5345, 0), // Confused barbarian, Ancient Cavern
+		new WorldPoint(1761, 5322, 0) // Lost barbarian, Ancient Cavern
+	);
+
+	/** The pyre sites by Otto's Grotto (Wiki: Funeral pyre (Barbarian)). */
+	static final Set<WorldPoint> PYRE_SITES = Set.of(
+		new WorldPoint(2519, 3519, 0),
+		new WorldPoint(2507, 3518, 0),
+		new WorldPoint(2503, 3499, 0)
+	);
+
+	/**
+	 * Items a kill step can't be done without, keyed by the clue text: every group is needed, and any one item of a
+	 * group will do, with RuneLite's variations of it (e.g. every Slayer helmet).
+	 */
+	static final Map<String, List<Set<Integer>>> KILL_ITEMS = Map.of(
+		// Wiki: Aberrant spectre, Deviant spectre (a nose peg or Slayer helmet is required)
+		"You'll have to plug your nose if you use this source of herbs.", List.of(
+			anyOf(ItemID.SLAYER_NOSEPEG, ItemID.SLAYER_HELM)),
+		// Wiki: Basilisk, Basilisk Knight (players must equip a mirror shield or V's shield)
+		"Reflection is the weakness for these eyes of evil.", List.of(
+			anyOf(ItemID.SLAYER_MIRROR_SHIELD, ItemID.V_SHIELD)),
+		// Wiki: Barbarian Training (a pyre ship needs any woodcutting axe, logs and a tinderbox), Axe
+		BARBARIAN_SPIRIT_STEP, List.of(
+			anyOf(ItemID.BRONZE_AXE, ItemID.IRON_AXE, ItemID.STEEL_AXE, ItemID.BLACK_AXE, ItemID.MITHRIL_AXE,
+				ItemID.ADAMANT_AXE, ItemID.RUNE_AXE, ItemID.DRAGON_AXE, ItemID.CRYSTAL_AXE,
+				ItemID.BRONZE_AXE_2H, ItemID.IRON_AXE_2H, ItemID.STEEL_AXE_2H, ItemID.BLACK_AXE_2H, ItemID.MITHRIL_AXE_2H,
+				ItemID.ADAMANT_AXE_2H, ItemID.RUNE_AXE_2H, ItemID.DRAGON_AXE_2H, ItemID.CRYSTAL_AXE_2H,
+				ItemID.ANMA_AXE, ItemID.TRAIL_GILDED_AXE, ItemID.INFERNAL_AXE, ItemID._3A_AXE, ItemID._3A_AXE_2H),
+			anyOf(ItemID.LOGS, ItemID.ACHEY_TREE_LOGS, ItemID.OAK_LOGS, ItemID.WILLOW_LOGS, ItemID.TEAK_LOGS,
+				ItemID.ARCTIC_PINE_LOG, ItemID.MAPLE_LOGS, ItemID.MAHOGANY_LOGS, ItemID.YEW_LOGS, ItemID.CAMPHOR_LOGS,
+				ItemID.MAGIC_LOGS, ItemID.IRONWOOD_LOGS, ItemID.REDWOOD_LOGS, ItemID.ROSEWOOD_LOGS),
+			anyOf(ItemID.TINDERBOX))
+	);
+
+	private static Set<Integer> anyOf(int... itemIds)
+	{
+		Set<Integer> items = new HashSet<>();
+		for (int itemId : itemIds)
+		{
+			items.addAll(ItemVariationMapping.getVariations(itemId));
+		}
+		return Set.copyOf(items);
+	}
 
 	private static final WorldPoint FALO_THE_BARD_LOCATION = new WorldPoint(2689, 3550, 0);
 	private static final WorldPoint SHERLOCK_LOCATION = new WorldPoint(2735, 3413, 0);
@@ -223,7 +401,7 @@ public class ShortestCluePlugin extends Plugin
 			return;
 		}
 
-		List<Integer> requiredItems = requiredItems(clue);
+		List<Set<Integer>> requiredItems = requiredItems(clue);
 		if (!newDests.isEmpty() && (!newDests.equals(this.currentDests) || !requiredItems.equals(this.currentRequiredItems))) {
 			pathTo(newDests, requiredItems);
 		}
@@ -231,14 +409,37 @@ public class ShortestCluePlugin extends Plugin
 		debug().updateFakeClueMapPoints(clue);
 	}
 
-	private List<Integer> requiredItems(ClueScroll clue)
+	/**
+	 * The items needed for the clue step, as groups: every group is needed, and any one item of a group will do.
+	 */
+	private List<Set<Integer>> requiredItems(ClueScroll clue)
 	{
-		List<Integer> items = new ArrayList<>();
+		List<Set<Integer>> items = new ArrayList<>();
 		if (config.requireItems() && clue.isRequiresSpade())
 		{
-			items.add(ItemID.SPADE);
+			items.add(Set.of(ItemID.SPADE));
+		}
+		if (config.requireItems() && clue instanceof CrypticClue)
+		{
+			items.addAll(killItemsNeeded((CrypticClue) clue));
 		}
 		return items;
+	}
+
+	/**
+	 * The kill step's item groups that the player neither wears nor carries; Shortest Path looks in the bank.
+	 */
+	List<Set<Integer>> killItemsNeeded(CrypticClue clue)
+	{
+		List<Set<Integer>> needed = new ArrayList<>();
+		for (Set<Integer> group : KILL_ITEMS.getOrDefault(clue.getText(), List.of()))
+		{
+			if (!hasAny(group))
+			{
+				needed.add(group);
+			}
+		}
+		return needed;
 	}
 
 	private void clearPathIfOurs()
@@ -254,7 +455,7 @@ public class ShortestCluePlugin extends Plugin
 	/**
 	 * Paths to the closest target with all required items, visiting a bank when necessary.
 	 */
-	public void pathTo(Set<WorldPoint> targets, List<Integer> requiredItems)
+	public void pathTo(Set<WorldPoint> targets, List<Set<Integer>> requiredItems)
 	{
 		if (client.getLocalPlayer() == null || targets == null || targets.isEmpty())
 		{
@@ -280,7 +481,7 @@ public class ShortestCluePlugin extends Plugin
 		eventBus.post(new PluginMessage("shortestpath", "path", data));
 	}
 
-	private static Set<Map<String, Object>> targetMaps(Set<WorldPoint> targets, List<Integer> requiredItems)
+	private static Set<Map<String, Object>> targetMaps(Set<WorldPoint> targets, List<Set<Integer>> requiredItems)
 	{
 		Set<Map<String, Object>> targetMaps = new HashSet<>();
 		for (WorldPoint target : targets)
@@ -299,6 +500,31 @@ public class ShortestCluePlugin extends Plugin
 	private WorldPoint applyRemap(WorldPoint dest)
 	{
 		return REMAPPED_DESTINATIONS.getOrDefault(dest, dest);
+	}
+
+	/**
+	 * Whether the player wears or carries any of these items, as RuneLite's clue plugin last saw them.
+	 */
+	boolean hasAny(Set<Integer> itemIds)
+	{
+		return containsAny(clueScrollPlugin.getEquippedItems(), itemIds)
+			|| containsAny(clueScrollPlugin.getInventoryItems(), itemIds);
+	}
+
+	private static boolean containsAny(Item[] items, Set<Integer> itemIds)
+	{
+		if (items == null)
+		{
+			return false;
+		}
+		for (Item item : items)
+		{
+			if (itemIds.contains(item.getId()))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public Set<WorldPoint> computeDestinations(ClueScroll clue)
@@ -320,6 +546,19 @@ public class ShortestCluePlugin extends Plugin
 			if (wp != null)
 			{
 				newDests.add(applyRemap(wp));
+			}
+		}
+		if (clue instanceof CrypticClue && newDests.isEmpty())
+		{
+			String text = ((CrypticClue)clue).getText();
+			if (BARBARIAN_SPIRIT_STEP.equals(text))
+			{
+				// Bones first; once they are in the inventory, the pyre sites
+				newDests.addAll(hasAny(Set.of(ItemID.BRUT_BARBARIAN_BONES_BAD)) ? PYRE_SITES : MANGLED_BONES_BARBARIANS);
+			}
+			else
+			{
+				newDests.addAll(KILL_LOCATIONS.getOrDefault(text, Set.of()));
 			}
 		}
 		if (clue instanceof FaloTheBardClue) {
