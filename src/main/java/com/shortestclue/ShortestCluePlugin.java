@@ -215,10 +215,15 @@ public class ShortestCluePlugin extends Plugin
 		{
 			log.warn("Failed to resolve clue destinations for {}", clue.getClass().getSimpleName(), e);
 			debug().updateFakeClueMapPoints(null);
+			clearPathIfOurs();
 			return;
 		}
 
-		if (!newDests.isEmpty() && !newDests.equals(this.currentDests)) {
+		// A clue with no known place doesn't keep the last clue's path up
+		if (newDests.isEmpty()) {
+			clearPathIfOurs();
+		}
+		else if (!newDests.equals(this.currentDests)) {
 			pathTo(newDests);
 		}
 
