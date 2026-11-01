@@ -97,8 +97,9 @@ public class KillLocationsTest
 	{
 		CrypticClue spectres = CrypticClue.forText("You'll have to plug your nose if you use this source of herbs.");
 		List<Set<Integer>> noseProtection = ShortestCluePlugin.KILL_ITEMS.get(spectres.getText());
-		// RuneLite's variations of the Slayer helmet count too
+		// RuneLite's variations of the Slayer helmet count too, after the nose peg, in the order given
 		assertTrue(noseProtection.get(0).contains(ItemID.SLAYER_HELM_I_ARAXYTE));
+		assertEquals(ItemID.SLAYER_NOSEPEG, (int) noseProtection.get(0).iterator().next());
 		assertEquals(noseProtection, carrying().killItemsNeeded(spectres));
 		assertEquals(List.of(), carrying(ItemID.SLAYER_HELM_I_ARAXYTE).killItemsNeeded(spectres));
 

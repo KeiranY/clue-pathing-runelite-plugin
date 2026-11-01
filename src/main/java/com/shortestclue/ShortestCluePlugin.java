@@ -1,8 +1,10 @@
 package com.shortestclue;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -317,12 +319,13 @@ public class ShortestCluePlugin extends Plugin
 
 	private static Set<Integer> anyOf(int... itemIds)
 	{
-		Set<Integer> items = new HashSet<>();
+		// In the order given, which is the order Shortest Path names them in
+		Set<Integer> items = new LinkedHashSet<>();
 		for (int itemId : itemIds)
 		{
 			items.addAll(ItemVariationMapping.getVariations(itemId));
 		}
-		return Set.copyOf(items);
+		return Collections.unmodifiableSet(items);
 	}
 
 	private static final WorldPoint FALO_THE_BARD_LOCATION = new WorldPoint(2689, 3550, 0);
