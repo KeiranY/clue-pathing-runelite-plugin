@@ -141,7 +141,16 @@ public class ShortestCluePlugin extends Plugin
 		// Top of the Agility Pyramid (#28) redirect to start of Agility Pyramid
 		Map.entry(new WorldPoint(3043, 4697, 3), new WorldPoint(3354, 2829, 0)),
 		// Port Sarim jail bucket (#11) redirect to Shantay Pass
-		Map.entry(new WorldPoint(3013, 3179, 0), new WorldPoint(3305, 3120, 0))
+		Map.entry(new WorldPoint(3013, 3179, 0), new WorldPoint(3305, 3120, 0)),
+
+		// Brimstail, redirect from the cave entrance to inside his cave
+		Map.entry(new WorldPoint(2402, 3419, 0), new WorldPoint(2407, 9816, 0)),
+		// Martin Thwait, redirect from the trapdoor in Burthorpe to inside the Rogues' Den
+		Map.entry(new WorldPoint(2906, 3537, 0), new WorldPoint(3044, 4969, 1)),
+		// Prospector Percy (#48), redirect from the Falador mine stairs to inside the Motherlode Mine
+		Map.entry(new WorldPoint(3061, 3377, 0), new WorldPoint(3756, 5666, 0)),
+		// Elite coordinate west of the Tower of Voices, redirect from the overworld to inside Prifddinas
+		Map.entry(new WorldPoint(2222, 3331, 0), new WorldPoint(3246, 6083, 0))
 	);
 
 	private static final WorldPoint FALO_THE_BARD_LOCATION = new WorldPoint(2689, 3550, 0);
