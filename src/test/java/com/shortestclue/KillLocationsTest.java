@@ -6,6 +6,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -47,6 +48,37 @@ public class KillLocationsTest
 	}
 
 	@Test
+	public void barbarianSpiritStepStaysAtThePyreWhileTheSpiritIsUp()
+	{
+		CrypticClue clue = CrypticClue.forText(ShortestCluePlugin.BARBARIAN_SPIRIT_STEP);
+		Set<Integer> carried = new HashSet<>(Set.of(ItemID.BRUT_BARBARIAN_BONES_BAD, ItemID.DRAGON_AXE, ItemID.LOGS, ItemID.TINDERBOX));
+		ShortestCluePlugin plugin = carrying(carried);
+		plugin.updateBarbarianSpirit(clue);
+		assertEquals(ShortestCluePlugin.PYRE_SITES, plugin.computeDestinations(clue));
+
+		// Burning them takes the bones and the logs; the spirit is up and nothing more is needed
+		carried.removeAll(Set.of(ItemID.BRUT_BARBARIAN_BONES_BAD, ItemID.LOGS));
+		for (int tick = 1; tick < ShortestCluePlugin.BARBARIAN_SPIRIT_TICKS; tick++)
+		{
+			plugin.updateBarbarianSpirit(clue);
+		}
+		assertEquals(ShortestCluePlugin.PYRE_SITES, plugin.computeDestinations(clue));
+		assertEquals(List.of(), plugin.killItemsNeeded(clue));
+
+		// The spirit's time is up: new bones, and logs to burn them
+		plugin.updateBarbarianSpirit(clue);
+		assertEquals(ShortestCluePlugin.MANGLED_BONES_BARBARIANS, plugin.computeDestinations(clue));
+		assertEquals(List.of(ShortestCluePlugin.KILL_ITEMS.get(clue.getText()).get(1)), plugin.killItemsNeeded(clue));
+
+		// Another step forgets the burned bones
+		carried.add(ItemID.BRUT_BARBARIAN_BONES_BAD);
+		plugin.updateBarbarianSpirit(clue);
+		carried.remove(ItemID.BRUT_BARBARIAN_BONES_BAD);
+		plugin.updateBarbarianSpirit(null);
+		assertEquals(ShortestCluePlugin.MANGLED_BONES_BARBARIANS, plugin.computeDestinations(clue));
+	}
+
+	@Test
 	public void everyKillStepWithItemsIsARuneLiteClue()
 	{
 		for (Map.Entry<String, List<Set<Integer>>> entry : ShortestCluePlugin.KILL_ITEMS.entrySet())
@@ -78,7 +110,12 @@ public class KillLocationsTest
 
 	private static ShortestCluePlugin carrying(Integer... itemIds)
 	{
-		Set<Integer> carried = Set.of(itemIds);
+		return carrying(Set.of(itemIds));
+	}
+
+	/** A plugin that sees the player carrying these items; changes to the set are seen too. */
+	private static ShortestCluePlugin carrying(Set<Integer> carried)
+	{
 		return new ShortestCluePlugin()
 		{
 			@Override

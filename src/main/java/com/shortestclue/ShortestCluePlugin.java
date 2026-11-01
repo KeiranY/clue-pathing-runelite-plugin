@@ -279,6 +279,18 @@ public class ShortestCluePlugin extends Plugin
 		new WorldPoint(2503, 3499, 0)
 	);
 
+	static final Set<Integer> MANGLED_BONES = Set.of(ItemID.BRUT_BARBARIAN_BONES_BAD);
+
+	/**
+	 * Game ticks (3 minutes) the path stays at the pyre after the mangled bones leave the inventory: burning them
+	 * takes the bones and the logs, and the spirit disappears if not killed within about 3 minutes, after which new
+	 * bones are needed (Wiki: Ferocious barbarian spirit).
+	 */
+	static final int BARBARIAN_SPIRIT_TICKS = 300;
+
+	/** Game ticks left at the pyre since the mangled bones were last carried; 0 off the barbarian spirit step. */
+	private int barbarianSpiritTicksLeft;
+
 	/**
 	 * Items a kill step can't be done without, keyed by the clue text: every group is needed, and any one item of a
 	 * group will do, with RuneLite's variations of it (e.g. every Slayer helmet).
@@ -379,6 +391,7 @@ public class ShortestCluePlugin extends Plugin
 	public void onGameTick(final GameTick event)
 	{
 		ClueScroll clue = debug().getFakeClue() != null ? debug().getFakeClue() : clueService.getClue();
+		updateBarbarianSpirit(clue);
 		if (clue == null)
 		{
 			debug().updateFakeClueMapPoints(null);
@@ -431,6 +444,10 @@ public class ShortestCluePlugin extends Plugin
 	 */
 	List<Set<Integer>> killItemsNeeded(CrypticClue clue)
 	{
+		if (BARBARIAN_SPIRIT_STEP.equals(clue.getText()) && barbarianSpiritUp())
+		{
+			return List.of();
+		}
 		List<Set<Integer>> needed = new ArrayList<>();
 		for (Set<Integer> group : KILL_ITEMS.getOrDefault(clue.getText(), List.of()))
 		{
@@ -440,6 +457,32 @@ public class ShortestCluePlugin extends Plugin
 			}
 		}
 		return needed;
+	}
+
+	/**
+	 * Called once a game tick: on the barbarian spirit step, restarts the spirit's time while the mangled bones are
+	 * carried and counts it down once they are gone.
+	 */
+	void updateBarbarianSpirit(ClueScroll clue)
+	{
+		if (!(clue instanceof CrypticClue) || !BARBARIAN_SPIRIT_STEP.equals(((CrypticClue) clue).getText()))
+		{
+			barbarianSpiritTicksLeft = 0;
+		}
+		else if (hasAny(MANGLED_BONES))
+		{
+			barbarianSpiritTicksLeft = BARBARIAN_SPIRIT_TICKS;
+		}
+		else if (barbarianSpiritTicksLeft > 0)
+		{
+			barbarianSpiritTicksLeft--;
+		}
+	}
+
+	/** Whether the mangled bones were burned less than the spirit's time ago, so the spirit is at the pyre. */
+	private boolean barbarianSpiritUp()
+	{
+		return barbarianSpiritTicksLeft > 0 && !hasAny(MANGLED_BONES);
 	}
 
 	private void clearPathIfOurs()
@@ -553,8 +596,8 @@ public class ShortestCluePlugin extends Plugin
 			String text = ((CrypticClue)clue).getText();
 			if (BARBARIAN_SPIRIT_STEP.equals(text))
 			{
-				// Bones first; once they are in the inventory, the pyre sites
-				newDests.addAll(hasAny(Set.of(ItemID.BRUT_BARBARIAN_BONES_BAD)) ? PYRE_SITES : MANGLED_BONES_BARBARIANS);
+				// Bones first; once they are in the inventory, the pyre sites, where the spirit appears when they burn
+				newDests.addAll(hasAny(MANGLED_BONES) || barbarianSpiritUp() ? PYRE_SITES : MANGLED_BONES_BARBARIANS);
 			}
 			else
 			{
