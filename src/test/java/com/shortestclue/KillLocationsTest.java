@@ -102,6 +102,9 @@ public class KillLocationsTest
 		assertEquals(ItemID.SLAYER_NOSEPEG, (int) noseProtection.get(0).iterator().next());
 		assertEquals(noseProtection, carrying().killItemsNeeded(spectres));
 		assertEquals(List.of(), carrying(ItemID.SLAYER_HELM_I_ARAXYTE).killItemsNeeded(spectres));
+		// Found nowhere, the group is named by one item
+		assertEquals(List.of(Set.of(ItemID.SLAYER_NOSEPEG)),
+			ShortestCluePlugin.oneItemOfMissingGroups(noseProtection, List.of(noseProtection.get(0))));
 
 		CrypticClue pyre = CrypticClue.forText(ShortestCluePlugin.BARBARIAN_SPIRIT_STEP);
 		assertEquals(3, carrying().killItemsNeeded(pyre).size());
