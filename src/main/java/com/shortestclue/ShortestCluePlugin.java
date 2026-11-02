@@ -1,16 +1,23 @@
 package com.shortestclue;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntPredicate;
 
 import com.google.inject.Provides;
 import com.shortestclue.debug.DebugClueController;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.api.Item;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
@@ -25,10 +32,13 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.cluescrolls.ClueScrollPlugin;
 import net.runelite.client.plugins.cluescrolls.ClueScrollService;
 import net.runelite.client.plugins.cluescrolls.clues.ClueScroll;
+import net.runelite.client.plugins.cluescrolls.clues.EmoteClue;
 import net.runelite.client.plugins.cluescrolls.clues.FaloTheBardClue;
 import net.runelite.client.plugins.cluescrolls.clues.LocationClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.LocationsClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.SkillChallengeClue;
+import net.runelite.client.plugins.cluescrolls.clues.emote.STASHUnit;
+import net.runelite.client.plugins.cluescrolls.clues.item.ItemRequirement;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.worldmap.WorldMapOverlay;
@@ -83,9 +93,31 @@ public class ShortestCluePlugin extends Plugin
 	@Inject
 	private MouseManager mouseManager;
 
+	@Inject
+	private StashUnits stashUnits;
+
+	@Inject
+	private StashOverlay stashOverlay;
+
+	@Inject
+	private StashReturn stashReturn;
+
 	private DebugClueController debugController;
 
 	private Set<WorldPoint> currentDests;
+
+	private List<Set<Integer>> currentRequiredItems = List.of();
+
+	private EmoteClue emoteItemsClue;
+
+	private Item[] emoteItemsCarried;
+
+	private List<Set<Integer>> emoteItems = List.of();
+
+	/**
+	 * Whether the emote clue's STASH unit is built but not known to be filled or empty.
+	 */
+	private volatile boolean stashUnknown;
 
 	/**
 	 * Clue steps that are only reachable through the Wilderness, so their path is
@@ -160,9 +192,22 @@ public class ShortestCluePlugin extends Plugin
 		return clueScrollPlugin;
 	}
 
+	boolean isStashUnknown()
+	{
+		return stashUnknown;
+	}
+
 	@Override
 	protected void startUp()
 	{
+		eventBus.register(stashUnits);
+		eventBus.register(stashReturn);
+		overlayManager.add(stashOverlay);
+		clientThread.invoke(() ->
+		{
+			stashUnits.load();
+			stashReturn.load();
+		});
 		if (config.showDebugPanel())
 		{
 			debug().installPanel();
@@ -185,6 +230,10 @@ public class ShortestCluePlugin extends Plugin
 	protected void shutDown()
 	{
 		clearPathIfOurs();
+		eventBus.unregister(stashUnits);
+		eventBus.unregister(stashReturn);
+		overlayManager.remove(stashOverlay);
+		stashUnknown = false;
 		if (this.debugController != null)
 		{
 			this.debugController.shutdown();
@@ -196,6 +245,22 @@ public class ShortestCluePlugin extends Plugin
 	public void onGameTick(final GameTick event)
 	{
 		ClueScroll clue = debug().getFakeClue() != null ? debug().getFakeClue() : clueService.getClue();
+		stashUnknown = config.requireItems() && clue instanceof EmoteClue
+			&& stashUnits.isUnknown(((EmoteClue) clue).getStashUnit());
+
+		// The items taken out of a STASH unit for the last step go back in first
+		STASHUnit putBack = stashReturn.update(clue);
+		if (putBack != null)
+		{
+			Set<WorldPoint> unitTiles = new HashSet<>(Arrays.asList(putBack.getWorldPoints()));
+			if (!unitTiles.equals(this.currentDests) || !this.currentRequiredItems.isEmpty())
+			{
+				pathTo(unitTiles, List.of());
+			}
+			debug().updateFakeClueMapPoints(clue);
+			return;
+		}
+
 		if (clue == null)
 		{
 			debug().updateFakeClueMapPoints(null);
@@ -218,11 +283,134 @@ public class ShortestCluePlugin extends Plugin
 			return;
 		}
 
-		if (!newDests.isEmpty() && !newDests.equals(this.currentDests)) {
-			pathTo(newDests);
+		List<Set<Integer>> requiredItems = requiredItems(clue);
+		if (!newDests.isEmpty() && (!newDests.equals(this.currentDests) || !requiredItems.equals(this.currentRequiredItems))) {
+			pathTo(newDests, requiredItems);
 		}
 
 		debug().updateFakeClueMapPoints(clue);
+	}
+
+	/**
+	 * The items needed for the clue step, as groups: every group is needed, and any one item of a group will do.
+	 */
+	private List<Set<Integer>> requiredItems(ClueScroll clue)
+	{
+		List<Set<Integer>> items = new ArrayList<>();
+		if (config.requireItems() && clue.isRequiresSpade())
+		{
+			items.add(Set.of(ItemID.SPADE));
+		}
+		if (config.requireItems() && clue instanceof EmoteClue)
+		{
+			items.addAll(emoteItems((EmoteClue) clue));
+		}
+		return items;
+	}
+
+	/**
+	 * The emote clue's items that the player neither wears nor carries, worked out again only when the clue or
+	 * those items change. None when they wait in the clue's STASH unit.
+	 */
+	private List<Set<Integer>> emoteItems(EmoteClue clue)
+	{
+		if (stashUnits.isFilled(clue.getStashUnit()))
+		{
+			return List.of();
+		}
+
+		Item[] carried = carriedItems();
+		if (clue != emoteItemsClue || !Arrays.equals(carried, emoteItemsCarried))
+		{
+			emoteItemsClue = clue;
+			emoteItemsCarried = carried;
+			emoteItems = itemsNeeded(clue.getItemRequirements(), carried, client.getItemCount(),
+				id -> client.getItemDefinition(id).getNote() != -1);
+		}
+		return emoteItems;
+	}
+
+	/**
+	 * What the player wears, then what they carry, the way RuneLite's emote clue overlay checks them.
+	 */
+	private Item[] carriedItems()
+	{
+		Item[] worn = clueScrollPlugin.getEquippedItems() != null ? clueScrollPlugin.getEquippedItems() : new Item[0];
+		Item[] inventory = clueScrollPlugin.getInventoryItems() != null ? clueScrollPlugin.getInventoryItems() : new Item[0];
+		return withItems(worn, Arrays.asList(inventory));
+	}
+
+	/**
+	 * The items still needed for the requirements that what the player wears and carries doesn't meet, as groups:
+	 * every group is needed, and any one item of a group will do (e.g. any charge of a ring). When several sets
+	 * will do, one of them is asked for. A requirement no item can meet ("nothing on your head") is left out.
+	 * The bank isn't looked at: Shortest Path checks it, and visits a bank first when the items are there.
+	 *
+	 * @param noted whether an item id is a noted copy, which can't be worn, so it's never asked for
+	 */
+	static List<Set<Integer>> itemsNeeded(ItemRequirement[] requirements, Item[] carried, int itemCount, IntPredicate noted)
+	{
+		List<Set<Integer>> groups = new ArrayList<>();
+		for (ItemRequirement requirement : requirements)
+		{
+			if (requirement.fulfilledBy(carried))
+			{
+				continue;
+			}
+
+			List<Item> candidates = new ArrayList<>();
+			for (int id = 0; id < itemCount; id++)
+			{
+				if (requirement.fulfilledBy(id) && !noted.test(id))
+				{
+					candidates.add(new Item(id, 1));
+				}
+			}
+			if (!requirement.fulfilledBy(withItems(carried, candidates)))
+			{
+				continue;
+			}
+
+			// One way to meet it: keep only the items it can't do without, e.g. one item for "any of these"
+			List<Item> picked = new ArrayList<>(candidates);
+			for (Item item : candidates)
+			{
+				picked.remove(item);
+				if (!requirement.fulfilledBy(withItems(carried, picked)))
+				{
+					picked.add(item);
+				}
+			}
+
+			// Each picked item may be swapped for any item that does the same job, e.g. another charge
+			for (Item item : picked)
+			{
+				List<Item> others = new ArrayList<>(picked);
+				others.remove(item);
+				Set<Integer> group = new LinkedHashSet<>();
+				for (Item candidate : candidates)
+				{
+					others.add(candidate);
+					if (requirement.fulfilledBy(withItems(carried, others)))
+					{
+						group.add(candidate.getId());
+					}
+					others.remove(others.size() - 1);
+				}
+				groups.add(group);
+			}
+		}
+		return groups;
+	}
+
+	private static Item[] withItems(Item[] items, List<Item> more)
+	{
+		Item[] all = Arrays.copyOf(items, items.length + more.size());
+		for (int i = 0; i < more.size(); i++)
+		{
+			all[items.length + i] = more.get(i);
+		}
+		return all;
 	}
 
 	private void clearPathIfOurs()
@@ -235,7 +423,10 @@ public class ShortestCluePlugin extends Plugin
 		eventBus.post(new PluginMessage("shortestpath", "clear", new HashMap<>()));
 	}
 
-	public void pathTo(Set<WorldPoint> targets)
+	/**
+	 * Paths to the closest target with all required items, visiting a bank when necessary.
+	 */
+	public void pathTo(Set<WorldPoint> targets, List<Set<Integer>> requiredItems)
 	{
 		if (client.getLocalPlayer() == null || targets == null || targets.isEmpty())
 		{
@@ -243,6 +434,7 @@ public class ShortestCluePlugin extends Plugin
 		}
 
 		this.currentDests = new HashSet<>(targets);
+		this.currentRequiredItems = List.copyOf(requiredItems);
 
 		// Only the identified steps override avoidWilderness; every other path
 		// sends back the user's current setting so a prior override doesn't leak.
@@ -252,12 +444,28 @@ public class ShortestCluePlugin extends Plugin
 
 		Map<String, Object> data = new HashMap<>();
 		data.put("start", client.getLocalPlayer().getWorldLocation());
-		data.put("target", targets);
+		data.put("target", targetMaps(targets, requiredItems));
 
 		Map<String, Object> configOverride = new HashMap<>();
 		configOverride.put("avoidWilderness", wildernessRequired ? Boolean.FALSE : avoidWilderness);
 		data.put("config", configOverride);
 		eventBus.post(new PluginMessage("shortestpath", "path", data));
+	}
+
+	private static Set<Map<String, Object>> targetMaps(Set<WorldPoint> targets, List<Set<Integer>> requiredItems)
+	{
+		Set<Map<String, Object>> targetMaps = new HashSet<>();
+		for (WorldPoint target : targets)
+		{
+			Map<String, Object> targetMap = new HashMap<>();
+			targetMap.put("point", target);
+			if (!requiredItems.isEmpty())
+			{
+				targetMap.put("requirements", requiredItems);
+			}
+			targetMaps.add(targetMap);
+		}
+		return targetMaps;
 	}
 
 	private WorldPoint applyRemap(WorldPoint dest)

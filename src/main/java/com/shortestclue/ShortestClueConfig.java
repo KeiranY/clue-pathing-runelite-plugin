@@ -49,4 +49,26 @@ public interface ShortestClueConfig extends Config
 	{
 		return true;
 	}
+
+	@ConfigItem(
+		keyName = "requireItems",
+		name = "Require items",
+		description = "Asks Shortest Path to bring items needed for the clue step, visiting a bank when necessary.",
+		position = 1
+	)
+	default boolean requireItems()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "remindStashPutBack",
+		name = "Remind to put STASH items back",
+		description = "After taking an emote clue's items out of its STASH unit, paths back to the unit once the step is done. Going far away, teleporting, reading or picking up a clue skips it.",
+		position = 2
+	)
+	default boolean remindStashPutBack()
+	{
+		return true;
+	}
 }
