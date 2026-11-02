@@ -1,16 +1,27 @@
 package com.shortestclue;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntPredicate;
 
 import com.google.inject.Provides;
 import com.shortestclue.debug.DebugClueController;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.api.Item;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
@@ -25,10 +36,12 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.cluescrolls.ClueScrollPlugin;
 import net.runelite.client.plugins.cluescrolls.ClueScrollService;
 import net.runelite.client.plugins.cluescrolls.clues.ClueScroll;
+import net.runelite.client.plugins.cluescrolls.clues.EmoteClue;
 import net.runelite.client.plugins.cluescrolls.clues.FaloTheBardClue;
 import net.runelite.client.plugins.cluescrolls.clues.LocationClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.LocationsClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.SkillChallengeClue;
+import net.runelite.client.plugins.cluescrolls.clues.item.ItemRequirement;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.worldmap.WorldMapOverlay;
@@ -83,9 +96,50 @@ public class ShortestCluePlugin extends Plugin
 	@Inject
 	private MouseManager mouseManager;
 
+	@Inject
+	private StashUnits stashUnits;
+
+	@Inject
+	private StashOverlay stashOverlay;
+
 	private DebugClueController debugController;
 
 	private Set<WorldPoint> currentDests;
+
+	private List<Set<Integer>> currentRequiredItems = List.of();
+
+	/**
+	 * The id of the query asking Shortest Path which required items it finds, while the path waits for its answer.
+	 */
+	private String itemsQuery;
+
+	private int itemsQueryCount;
+
+	private int itemsQueryTicks;
+
+	private int itemsQueryRetries;
+
+	/**
+	 * The items sent with the shown path, where a group Shortest Path found nowhere is cut to one item; null until
+	 * the path to the current targets is sent.
+	 */
+	private List<Set<Integer>> shownItems;
+
+	/**
+	 * Whether the bank changed since Shortest Path was last asked which items it finds.
+	 */
+	private boolean bankChanged;
+
+	private EmoteClue emoteItemsClue;
+
+	private Item[] emoteItemsCarried;
+
+	private List<Set<Integer>> emoteItems = List.of();
+
+	/**
+	 * Whether the emote clue's STASH unit is built but not known to be filled or empty.
+	 */
+	private volatile boolean stashUnknown;
 
 	/**
 	 * Clue steps that are only reachable through the Wilderness, so their path is
@@ -130,6 +184,16 @@ public class ShortestCluePlugin extends Plugin
 		new WorldPoint(3013, 3179, 0), new WorldPoint(3305, 3120, 0)
 	);
 
+	/**
+	 * Game ticks to wait for Shortest Path's answer to an items query before the path goes with every item.
+	 */
+	private static final int ITEMS_QUERY_TICKS = 10;
+
+	/**
+	 * Times an items query is asked again after a new Shortest Path path cancelled it.
+	 */
+	private static final int ITEMS_QUERY_RETRIES = 3;
+
 	private static final WorldPoint FALO_THE_BARD_LOCATION = new WorldPoint(2689, 3550, 0);
 	private static final WorldPoint SHERLOCK_LOCATION = new WorldPoint(2735, 3413, 0);
 	private static final WorldPoint CHARLIE_THE_TRAMP_LOCATION = new WorldPoint(3208, 3391, 0);
@@ -160,9 +224,17 @@ public class ShortestCluePlugin extends Plugin
 		return clueScrollPlugin;
 	}
 
+	boolean isStashUnknown()
+	{
+		return stashUnknown;
+	}
+
 	@Override
 	protected void startUp()
 	{
+		eventBus.register(stashUnits);
+		overlayManager.add(stashOverlay);
+		clientThread.invoke(stashUnits::load);
 		if (config.showDebugPanel())
 		{
 			debug().installPanel();
@@ -185,6 +257,9 @@ public class ShortestCluePlugin extends Plugin
 	protected void shutDown()
 	{
 		clearPathIfOurs();
+		eventBus.unregister(stashUnits);
+		overlayManager.remove(stashOverlay);
+		stashUnknown = false;
 		if (this.debugController != null)
 		{
 			this.debugController.shutdown();
@@ -195,9 +270,24 @@ public class ShortestCluePlugin extends Plugin
 	@Subscribe
 	public void onGameTick(final GameTick event)
 	{
+		if (itemsQuery != null && ++itemsQueryTicks > ITEMS_QUERY_TICKS)
+		{
+			// No answer, e.g. from a Shortest Path without queries: a path not shown yet goes with every item
+			itemsQuery = null;
+			if (shownItems == null)
+			{
+				sendPath(currentRequiredItems);
+			}
+		}
+
 		ClueScroll clue = debug().getFakeClue() != null ? debug().getFakeClue() : clueService.getClue();
+		stashUnknown = config.requireItems() && clue instanceof EmoteClue
+			&& stashUnits.isUnknown(((EmoteClue) clue).getStashUnit());
 		if (clue == null)
 		{
+			// No answer or bank change brings back a path for a clue that's gone
+			itemsQuery = null;
+			shownItems = null;
 			debug().updateFakeClueMapPoints(null);
 			if (config.clearPathOnClueLost())
 			{
@@ -218,15 +308,154 @@ public class ShortestCluePlugin extends Plugin
 			return;
 		}
 
-		if (!newDests.isEmpty() && !newDests.equals(this.currentDests)) {
-			pathTo(newDests);
+		List<Set<Integer>> requiredItems = requiredItems(clue);
+		if (!newDests.isEmpty() && (!newDests.equals(this.currentDests) || !requiredItems.equals(this.currentRequiredItems))) {
+			pathTo(newDests, requiredItems);
+		}
+		else if (itemsQuery == null && !newDests.isEmpty())
+		{
+			if (shownItems == null)
+			{
+				// Not sent yet, e.g. no player when the answer came
+				showPath();
+			}
+			else if (bankChanged && !shownItems.equals(currentRequiredItems))
+			{
+				// The bank may now hold another item of a group that was cut to one item
+				itemsQueryRetries = 0;
+				askWhichItemsAreFound();
+			}
 		}
 
 		debug().updateFakeClueMapPoints(clue);
 	}
 
+	/**
+	 * The items needed for the clue step, as groups: every group is needed, and any one item of a group will do.
+	 */
+	private List<Set<Integer>> requiredItems(ClueScroll clue)
+	{
+		List<Set<Integer>> items = new ArrayList<>();
+		if (config.requireItems() && clue.isRequiresSpade())
+		{
+			items.add(Set.of(ItemID.SPADE));
+		}
+		if (config.requireItems() && clue instanceof EmoteClue)
+		{
+			items.addAll(emoteItems((EmoteClue) clue));
+		}
+		return items;
+	}
+
+	/**
+	 * The emote clue's items that the player neither wears nor carries, worked out again only when the clue or
+	 * those items change. None when they wait in the clue's STASH unit.
+	 */
+	private List<Set<Integer>> emoteItems(EmoteClue clue)
+	{
+		if (stashUnits.isFilled(clue.getStashUnit()))
+		{
+			return List.of();
+		}
+
+		Item[] carried = carriedItems();
+		if (clue != emoteItemsClue || !Arrays.equals(carried, emoteItemsCarried))
+		{
+			emoteItemsClue = clue;
+			emoteItemsCarried = carried;
+			emoteItems = itemsNeeded(clue.getItemRequirements(), carried, client.getItemCount(),
+				id -> client.getItemDefinition(id).getNote() != -1);
+		}
+		return emoteItems;
+	}
+
+	/**
+	 * What the player wears, then what they carry, the way RuneLite's emote clue overlay checks them.
+	 */
+	private Item[] carriedItems()
+	{
+		Item[] worn = clueScrollPlugin.getEquippedItems() != null ? clueScrollPlugin.getEquippedItems() : new Item[0];
+		Item[] inventory = clueScrollPlugin.getInventoryItems() != null ? clueScrollPlugin.getInventoryItems() : new Item[0];
+		return withItems(worn, Arrays.asList(inventory));
+	}
+
+	/**
+	 * The items still needed for the requirements that what the player wears and carries doesn't meet, as groups:
+	 * every group is needed, and any one item of a group will do (e.g. any charge of a ring). When several sets
+	 * will do, one of them is asked for. A requirement no item can meet ("nothing on your head") is left out.
+	 * The bank isn't looked at: Shortest Path checks it, and visits a bank first when the items are there.
+	 *
+	 * @param noted whether an item id is a noted copy, which can't be worn, so it's never asked for
+	 */
+	static List<Set<Integer>> itemsNeeded(ItemRequirement[] requirements, Item[] carried, int itemCount, IntPredicate noted)
+	{
+		List<Set<Integer>> groups = new ArrayList<>();
+		for (ItemRequirement requirement : requirements)
+		{
+			if (requirement.fulfilledBy(carried))
+			{
+				continue;
+			}
+
+			List<Item> candidates = new ArrayList<>();
+			for (int id = 0; id < itemCount; id++)
+			{
+				if (requirement.fulfilledBy(id) && !noted.test(id))
+				{
+					candidates.add(new Item(id, 1));
+				}
+			}
+			if (!requirement.fulfilledBy(withItems(carried, candidates)))
+			{
+				continue;
+			}
+
+			// One way to meet it: keep only the items it can't do without, e.g. one item for "any of these"
+			List<Item> picked = new ArrayList<>(candidates);
+			for (Item item : candidates)
+			{
+				picked.remove(item);
+				if (!requirement.fulfilledBy(withItems(carried, picked)))
+				{
+					picked.add(item);
+				}
+			}
+
+			// Each picked item may be swapped for any item that does the same job, e.g. another charge
+			for (Item item : picked)
+			{
+				List<Item> others = new ArrayList<>(picked);
+				others.remove(item);
+				Set<Integer> group = new LinkedHashSet<>();
+				for (Item candidate : candidates)
+				{
+					others.add(candidate);
+					if (requirement.fulfilledBy(withItems(carried, others)))
+					{
+						group.add(candidate.getId());
+					}
+					others.remove(others.size() - 1);
+				}
+				groups.add(group);
+			}
+		}
+		return groups;
+	}
+
+	private static Item[] withItems(Item[] items, List<Item> more)
+	{
+		Item[] all = Arrays.copyOf(items, items.length + more.size());
+		for (int i = 0; i < more.size(); i++)
+		{
+			all[items.length + i] = more.get(i);
+		}
+		return all;
+	}
+
 	private void clearPathIfOurs()
 	{
+		this.itemsQuery = null;
+		this.shownItems = null;
 		if (this.currentDests.isEmpty())
 		{
 			return;
@@ -235,7 +464,11 @@ public class ShortestCluePlugin extends Plugin
 		eventBus.post(new PluginMessage("shortestpath", "clear", new HashMap<>()));
 	}
 
-	public void pathTo(Set<WorldPoint> targets)
+	/**
+	 * Paths to the closest target with all required items, visiting a bank when necessary. When a group holds
+	 * several items, Shortest Path is first asked which groups it finds (see {@link #onPluginMessage}).
+	 */
+	public void pathTo(Set<WorldPoint> targets, List<Set<Integer>> requiredItems)
 	{
 		if (client.getLocalPlayer() == null || targets == null || targets.isEmpty())
 		{
@@ -243,21 +476,169 @@ public class ShortestCluePlugin extends Plugin
 		}
 
 		this.currentDests = new HashSet<>(targets);
+		this.currentRequiredItems = List.copyOf(requiredItems);
+		this.shownItems = null;
+		this.itemsQuery = null;
+		showPath();
+	}
 
+	private void showPath()
+	{
+		if (this.currentRequiredItems.stream().anyMatch(group -> group.size() > 1))
+		{
+			// The query searches with the settings the path will have
+			eventBus.post(new PluginMessage("shortestpath", "path", Map.of("config", configOverride())));
+			this.itemsQueryRetries = 0;
+			askWhichItemsAreFound();
+		}
+		else
+		{
+			sendPath(this.currentRequiredItems);
+		}
+	}
+
+	/**
+	 * Shows the path to the current targets, with these items required there.
+	 */
+	private void sendPath(List<Set<Integer>> requiredItems)
+	{
+		if (client.getLocalPlayer() == null)
+		{
+			return;
+		}
+
+		this.shownItems = requiredItems;
+		Map<String, Object> data = new HashMap<>();
+		data.put("start", client.getLocalPlayer().getWorldLocation());
+		data.put("target", targetMaps(this.currentDests, requiredItems));
+		data.put("config", configOverride());
+		eventBus.post(new PluginMessage("shortestpath", "path", data));
+	}
+
+	private Map<String, Object> configOverride()
+	{
 		// Only the identified steps override avoidWilderness; every other path
 		// sends back the user's current setting so a prior override doesn't leak.
-		boolean wildernessRequired = targets.stream().anyMatch(WILDERNESS_REQUIRED_TARGETS::contains);
+		boolean wildernessRequired = this.currentDests.stream().anyMatch(WILDERNESS_REQUIRED_TARGETS::contains);
 		String avoidWildernessConfig = configManager.getConfiguration("shortestpath", "avoidWilderness");
 		boolean avoidWilderness = avoidWildernessConfig == null || Boolean.parseBoolean(avoidWildernessConfig);
 
-		Map<String, Object> data = new HashMap<>();
-		data.put("start", client.getLocalPlayer().getWorldLocation());
-		data.put("target", targets);
-
 		Map<String, Object> configOverride = new HashMap<>();
 		configOverride.put("avoidWilderness", wildernessRequired ? Boolean.FALSE : avoidWilderness);
-		data.put("config", configOverride);
-		eventBus.post(new PluginMessage("shortestpath", "path", data));
+		return configOverride;
+	}
+
+	/**
+	 * Asks Shortest Path, without showing a path, which required item groups it finds in the inventory, worn
+	 * items or bank. It answers with a "result" message.
+	 */
+	private void askWhichItemsAreFound()
+	{
+		if (client.getLocalPlayer() == null)
+		{
+			this.itemsQuery = null;
+			return;
+		}
+
+		this.itemsQuery = "shortestclue-items-" + (++this.itemsQueryCount);
+		this.itemsQueryTicks = 0;
+		this.bankChanged = false;
+		Map<String, Object> data = new HashMap<>();
+		data.put("id", this.itemsQuery);
+		data.put("start", client.getLocalPlayer().getWorldLocation());
+		data.put("target", targetMaps(this.currentDests, this.currentRequiredItems));
+		eventBus.post(new PluginMessage("shortestpath", "query", data));
+	}
+
+	@Subscribe
+	public void onPluginMessage(PluginMessage event)
+	{
+		if (!"shortestpath".equals(event.getNamespace()) || !"result".equals(event.getName()))
+		{
+			return;
+		}
+		Map<String, Object> data = event.getData();
+		if (this.itemsQuery == null || data == null || !this.itemsQuery.equals(data.get("id")))
+		{
+			return;
+		}
+
+		// A new Shortest Path path cancels the queries still waiting
+		if ("CANCELLED".equals(data.get("reason")) && this.itemsQueryRetries++ < ITEMS_QUERY_RETRIES)
+		{
+			askWhichItemsAreFound();
+			return;
+		}
+
+		this.itemsQuery = null;
+		Object missing = data.get("missingItems");
+		List<Set<Integer>> items = oneItemOfMissingGroups(this.currentRequiredItems,
+			missing instanceof Collection ? (Collection<?>) missing : List.of());
+		if (!items.equals(this.shownItems))
+		{
+			sendPath(items);
+		}
+	}
+
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged event)
+	{
+		// Asked about again on the next tick when a group was cut to one item, so at most once a tick
+		if (event.getContainerId() == InventoryID.BANK)
+		{
+			this.bankChanged = true;
+		}
+	}
+
+	/**
+	 * The required items with each group Shortest Path found nowhere cut to one item, its lowest id (e.g. "Rune
+	 * helm (h1)" for any heraldic rune helm), so Shortest Path's "Not found in inventory or bank" text names one
+	 * item instead of every variant. The route stays the same: with an item found nowhere, Shortest Path paths
+	 * straight to the target.
+	 *
+	 * @param missing the groups Shortest Path found nowhere, each a collection of item ids
+	 */
+	static List<Set<Integer>> oneItemOfMissingGroups(List<Set<Integer>> groups, Collection<?> missing)
+	{
+		Set<Set<Integer>> missingGroups = new HashSet<>();
+		for (Object group : missing)
+		{
+			if (group instanceof Collection)
+			{
+				Set<Integer> ids = new HashSet<>();
+				for (Object id : (Collection<?>) group)
+				{
+					if (id instanceof Integer)
+					{
+						ids.add((Integer) id);
+					}
+				}
+				missingGroups.add(ids);
+			}
+		}
+
+		List<Set<Integer>> items = new ArrayList<>();
+		for (Set<Integer> group : groups)
+		{
+			items.add(!group.isEmpty() && missingGroups.contains(group) ? Set.of(Collections.min(group)) : group);
+		}
+		return items;
+	}
+
+	private static Set<Map<String, Object>> targetMaps(Set<WorldPoint> targets, List<Set<Integer>> requiredItems)
+	{
+		Set<Map<String, Object>> targetMaps = new HashSet<>();
+		for (WorldPoint target : targets)
+		{
+			Map<String, Object> targetMap = new HashMap<>();
+			targetMap.put("point", target);
+			if (!requiredItems.isEmpty())
+			{
+				targetMap.put("requirements", requiredItems);
+			}
+			targetMaps.add(targetMap);
+		}
+		return targetMaps;
 	}
 
 	private WorldPoint applyRemap(WorldPoint dest)
